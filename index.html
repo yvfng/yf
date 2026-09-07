@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="国际实时 — 实时地球昼夜晨昏线、世界时钟、全球市场开闭市状态，纯本地计算的单文件动态网页">
+<title>国际实时 · International Realtime</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%231b4d8f'/%3E%3Cpath d='M6 14c4-3 8 2 12-1s7 0 8 2' stroke='%2346d18f' stroke-width='2.4' fill='none'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#04070f; --panel:rgba(10,17,34,.62); --line:rgba(130,180,255,.14);
+    --txt:#dbe7ff; --muted:#7f92b8; --cyan:#4fd6ff; --amber:#ffbe5c;
+    --green:#43d98c; --red:#ff6b7a; --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,Menlo,monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    line-height:1.6; overflow-x:hidden;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:radial-gradient(1100px 520px at 78% -12%, rgba(56,120,255,.14), transparent 62%),
+               radial-gradient(900px 500px at -8% 42%, rgba(70,209,143,.07), transparent 60%);
+  }
+  main, header, footer{position:relative; z-index:1}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 22px}
+
+  header{padding:18px 0 8px; border-bottom:1px solid var(--line)}
+  .hd{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  .brand{display:flex; align-items:baseline; gap:12px}
+  .brand b{font-size:19px; letter-spacing:1px}
+  .brand span{font-size:12px; color:var(--muted); letter-spacing:2px}
+  nav{display:flex; gap:18px; flex-wrap:wrap}
+  nav a{color:var(--muted); text-decoration:none; font-size:13.5px; transition:color .2s}
+  nav a:hover{color:var(--cyan)}
+  .utc{font-family:var(--mono); font-size:14px; color:var(--cyan); text-align:right}
+  .utc small{display:block; font-size:11px; color:var(--muted); font-family:inherit}
+
+  .hero{padding:44px 0 10px; text-align:center}
+  .hero h1{
+    font-size:clamp(30px,4.6vw,46px); letter-spacing:2px; font-weight:800;
+    background:linear-gradient(92deg,#7ee0ff 8%,#bcd4ff 45%,#ffca7a 92%);
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  }
+  .hero .sub{color:var(--muted); font-size:14.5px; margin-top:8px; letter-spacing:1px}
+  .hero .live-line{
+    margin-top:14px; display:inline-flex; flex-wrap:wrap; gap:8px 22px; justify-content:center;
+    font-family:var(--mono); font-size:13px; color:var(--txt);
+    background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:8px 20px;
+  }
+  .live-line i{font-style:normal; color:var(--amber)}
+
+  .globe-wrap{
+    position:relative; margin:26px auto 6px; width:100%; aspect-ratio:16/9; max-width:1180px;
+    background:#020409; border:1px solid var(--line); border-radius:20px; overflow:hidden;
+  }
+  #globe{position:absolute; inset:0; width:100%; height:100%; cursor:grab; touch-action:none}
+  #globe.dragging{cursor:grabbing}
+  .hud{position:absolute; pointer-events:none; font-size:12.5px}
+  .hud .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:10px 14px; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .hud-tl{top:14px; left:14px; display:flex; flex-direction:column; gap:8px}
+  .hud-tl .k{color:var(--muted); font-size:11px; letter-spacing:1px}
+  .hud-tl .v{font-family:var(--mono); font-size:14px; color:var(--txt)}
+  .hud-tl .v em{font-style:normal; color:var(--cyan)}
+  .hud-bl{bottom:14px; left:14px; display:flex; gap:8px; flex-wrap:wrap; max-width:70%}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted);
+    background:rgba(8,14,30,.55); border:1px solid var(--line); border-radius:999px; padding:4px 10px;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block}
+  .dot-night{background:#ffd27a; box-shadow:0 0 6px #ffb454}
+  .dot-day{background:#7de3ff}
+  .dot-idl{width:14px; height:0; border-top:2px dashed #ffc469; border-radius:0}
+  .dot-term{width:14px; height:0; border-top:2px solid rgba(255,170,90,.85); border-radius:0; box-shadow:0 0 6px rgba(255,160,70,.8)}
+  .hud-br{bottom:14px; right:14px; display:flex; gap:8px; align-items:flex-end}
+  .hint{font-size:11.5px; color:var(--muted); text-align:right; line-height:1.5}
+  .gbtns{display:flex; flex-direction:column; gap:6px; pointer-events:auto}
+  .gbtn{
+    width:34px; height:34px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel); color:var(--txt); font-size:16px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; transition:border-color .2s,color .2s;
+    backdrop-filter:blur(8px);
+  }
+  .gbtn:hover{border-color:var(--cyan); color:var(--cyan)}
+  #tip{
+    position:absolute; display:none; pointer-events:none; z-index:5;
+    background:rgba(6,12,26,.92); border:1px solid rgba(130,190,255,.3); border-radius:10px;
+    padding:7px 11px; font-size:12.5px; white-space:nowrap;
+  }
+  #tip b{color:var(--cyan)}
+  #tip .t{font-family:var(--mono); color:var(--txt)}
+
+  section{padding:46px 0 8px}
+  .sec-head{display:flex; align-items:baseline; gap:14px; margin-bottom:6px}
+  .sec-head h2{font-size:22px; letter-spacing:1px}
+  .sec-head h2::before{content:""; display:inline-block; width:5px; height:18px; border-radius:3px; margin-right:10px;
+    background:linear-gradient(180deg,var(--cyan),#2f7dff); vertical-align:-2px}
+  .sec-head .desc{color:var(--muted); font-size:13px}
+
+  .clock-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:14px; margin-top:20px}
+  .clock-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px;
+    transition:transform .18s, border-color .18s;
+  }
+  .clock-card:hover{transform:translateY(-2px); border-color:rgba(130,190,255,.32)}
+  .cc-city{font-size:14px; display:flex; justify-content:space-between; align-items:baseline}
+  .cc-city span{color:var(--muted); font-size:11px}
+  .cc-time{font-family:var(--mono); font-size:29px; letter-spacing:1px; margin:5px 0 2px; color:#fff}
+  .cc-meta{display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted)}
+  .badge{font-size:11px; padding:2px 9px; border-radius:999px; border:1px solid; letter-spacing:1px}
+  .b-day{color:var(--cyan); border-color:rgba(79,214,255,.4); background:rgba(79,214,255,.08)}
+  .b-night{color:var(--amber); border-color:rgba(255,190,92,.4); background:rgba(255,190,92,.08)}
+  .cc-tz{margin-top:8px; font-family:var(--mono); font-size:11.5px; color:var(--muted); border-top:1px dashed rgba(130,180,255,.14); padding-top:7px}
+
+  .mkt-list{margin-top:20px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--panel)}
+  .mkt-row{
+    display:grid; grid-template-columns:2.1fr 1.05fr .95fr 1.5fr 1.25fr; gap:10px; align-items:center;
+    padding:12px 18px; border-bottom:1px solid rgba(130,180,255,.07); font-size:13.5px;
+  }
+  .mkt-row:last-child{border-bottom:none}
+  .mkt-row:hover{background:rgba(80,140,255,.05)}
+  .mkt-name b{display:block; font-size:13.5px}
+  .mkt-name span{color:var(--muted); font-size:11.5px}
+  .mkt-local{font-family:var(--mono); font-size:14px}
+  .mkt-local span{display:block; font-size:11px; color:var(--muted); font-family:inherit}
+  .mkt-status{text-align:left}
+  .b-open{color:var(--green); border-color:rgba(67,217,140,.45); background:rgba(67,217,140,.1)}
+  .b-lunch{color:var(--amber); border-color:rgba(255,190,92,.45); background:rgba(255,190,92,.1)}
+  .b-pre{color:var(--cyan); border-color:rgba(79,214,255,.45); background:rgba(79,214,255,.1)}
+  .b-closed{color:#8fa1c5; border-color:rgba(143,161,197,.35); background:rgba(143,161,197,.08)}
+  .bar{height:5px; border-radius:99px; background:rgba(130,180,255,.12); overflow:hidden}
+  .bar i{display:block; height:100%; width:0; border-radius:99px;
+    background:linear-gradient(90deg,#2f7dff,var(--green)); transition:width .6s linear}
+  .bar.gray i{background:#5c6f95}
+  .mkt-next{font-family:var(--mono); font-size:12.5px; color:var(--muted); text-align:right}
+
+  .notes{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin:22px 0 10px}
+  .note{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px}
+  .note h3{font-size:14.5px; margin-bottom:8px; color:#cfe4ff}
+  .note p{font-size:12.8px; color:var(--muted)}
+
+  footer{margin-top:42px; padding:20px 0 34px; border-top:1px solid var(--line);
+    color:var(--muted); font-size:12.5px; text-align:center}
+
+  @media (max-width:760px){
+    .hero{padding:26px 0 4px}
+    .hero h1{letter-spacing:1px}
+    .hero .live-line{font-size:11.5px; padding:7px 14px; gap:6px 14px; border-radius:14px}
+    .utc small{display:none}
+    .utc{font-size:12.5px}
+    .hd{gap:10px}
+    .brand b{font-size:17px}
+    .brand span{display:none}
+    nav{gap:13px; width:100%; order:3}
+    nav a{font-size:12.5px}
+    section{padding:32px 0 6px}
+    .sec-head h2{font-size:18.5px}
+    /* 地球：占满屏宽并拉高画幅，光点/文字随之放大 */
+    .globe-wrap{aspect-ratio:5/6; margin-top:16px; border-radius:16px}
+    .hud-tl{top:10px; left:10px; gap:6px}
+    .hud-tl .card{padding:7px 10px; border-radius:10px}
+    .hud-tl .k{font-size:10px}
+    .hud-tl .v{font-size:12.5px}
+    .hud-tl .card:nth-child(3){display:none}
+    .hud-bl{bottom:10px; left:10px; gap:6px; max-width:calc(100% - 76px)}
+    .chip{font-size:10.5px; padding:3px 8px}
+    .hud-br{bottom:10px; right:10px}
+    .hud-br .hint{display:none}
+    .gbtn{width:31px; height:31px; border-radius:9px; font-size:14px}
+    /* 世界时钟：双列紧凑卡片 */
+    .clock-grid{grid-template-columns:repeat(2,1fr); gap:10px}
+    .clock-card{padding:12px 13px}
+    .cc-time{font-size:23px}
+    .cc-city{font-size:13px}
+    /* 市场列表：两行式紧凑网格 */
+    .mkt-list{border-radius:12px}
+    .mkt-row{grid-template-columns:1.5fr 1fr; grid-template-areas:"name status" "local local" "bar next"; row-gap:8px; padding:11px 14px; font-size:13px}
+    .mkt-name{grid-area:name} .mkt-status{grid-area:status; text-align:right}
+    .mkt-local{grid-area:local} .mkt-list .bar{grid-area:bar} .mkt-next{grid-area:next; text-align:left}
+    .notes{grid-template-columns:1fr; gap:10px}
+  }
+  @media (max-width:380px){
+    .globe-wrap{aspect-ratio:1/1}
+    .cc-time{font-size:20px}
+    .chip{font-size:10px; padding:3px 7px}
+  }
+  @media (min-width:761px) and (max-width:1020px){
+    .globe-wrap{aspect-ratio:4/3}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hd">
+    <div class="brand"><b>国际实时</b><span>INTERNATIONAL REALTIME</span></div>
+    <nav>
+      <a href="#globe-sec">实时地球</a>
+      <a href="#clocks">世界时钟</a>
+      <a href="#markets">全球市场</a>
+      <a href="#about">说明</a>
+    </nav>
+    <div class="utc"><span id="utcClock">--:--:--</span><small id="utcDate">协调世界时 UTC</small></div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h1>此刻，地球正在转动</h1>
+    <div class="sub">昼夜晨昏 · 世界时刻 · 市场开闭 —— 全部数据在你的浏览器里实时演算</div>
+    <div class="live-line" id="liveLine"></div>
+  </div>
+
+  <section id="globe-sec">
+    <div class="globe-wrap">
+      <canvas id="globe" aria-label="实时昼夜地球仪，可拖动旋转、滚轮缩放、点击城市定位"></canvas>
+      <div class="hud hud-tl">
+        <div class="card"><div class="k">太阳直射点 SUBSOLAR</div><div class="v" id="sunPos">—</div></div>
+        <div class="card"><div class="k">协调世界时 UTC</div><div class="v" id="hudUtc">—</div></div>
+        <div class="card"><div class="k">视角 / 缩放</div><div class="v" id="viewInfo">—</div></div>
+      </div>
+      <div class="hud hud-bl">
+        <span class="chip"><span class="dot dot-night"></span>城市灯光（夜）</span>
+        <span class="chip"><span class="dot dot-day"></span>城市（昼）</span>
+        <span class="chip"><span class="dot dot-term"></span>晨昏线</span>
+        <span class="chip"><span class="dot dot-idl"></span>国际换日线（示意）</span>
+      </div>
+      <div class="hud hud-br">
+        <div class="hint">拖动旋转 · 滚轮缩放<br>点击城市光点定位 · 松手恢复自转</div>
+        <div class="gbtns">
+          <button class="gbtn" id="zin" aria-label="放大">＋</button>
+          <button class="gbtn" id="zout" aria-label="缩小">－</button>
+          <button class="gbtn" id="zreset" aria-label="复位视角" title="复位视角">⟲</button>
+        </div>
+      </div>
+      <div id="tip"></div>
+    </div>
+  </section>
+
+  <section id="clocks">
+    <div class="sec-head"><h2>世界时钟</h2><div class="desc">12 座城市的此刻 · 昼夜状态跟随真实太阳位置</div></div>
+    <div class="clock-grid" id="clockGrid"></div>
+  </section>
+
+  <section id="markets">
+    <div class="sec-head"><h2>全球市场开闭市</h2><div class="desc">按当地官方交易时段实时判定 · 不含节假日休市</div></div>
+    <div class="mkt-list" id="mktList"></div>
+  </section>
+
+  <section id="about">
+    <div class="sec-head"><h2>关于这些数据</h2><div class="desc">没有服务器 · 没有请求 · 一切发生在本地</div></div>
+    <div class="notes">
+      <div class="note"><h3>晨昏线如何计算</h3><p>页面根据当前时刻推算太阳视位置（儒略日 → 太阳赤纬与格林尼治恒星时），得到直射点后，画出与太阳相距 90° 的晨昏大圆。精度约 0.1°，每一帧都在随真实时间更新。</p></div>
+      <div class="note"><h3>换日线为什么是弯的</h3><p>为了让同一国家或群岛处在同一天，国际换日线在白令海峡、阿留申群岛、基里巴斯、萨摩亚等地多次绕行。本页按主要绕行段示意绘制，实际条约边界更复杂。</p></div>
+      <div class="note"><h3>市场状态说明</h3><p>开闭市依据各交易所当地时区的官方时段判断，含午间休市与开市前 30 分钟"预开市"提示；未计入节假日临时休市与临时停牌，仅供参考，不构成投资建议。</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">国际实时 · 打开即运行 · 昼夜 / 时钟 / 市场状态全部由浏览器本地实时计算，无任何网络请求 · 页面内容仅供参考</div>
+</footer>
+
+<noscript><div style="text-align:center;padding:30px;color:#ff9">本页需要启用 JavaScript 才能呈现动态效果。</div></noscript>
+
+<script>
+'use strict';
+
+/* ================= 基础工具 ================= */
+const TAU = Math.PI * 2;
+const rad = d => d * Math.PI / 180;
+const deg = r => r * 180 / Math.PI;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const normLon = l => ((l % 360) + 540) % 360 - 180;
+const f2 = n => String(n).padStart(2, '0');
+const WD_ZH = ['周日','周一','周二','周三','周四','周五','周六'];
+const WD_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function latLonToVec(lat, lon) {
+  const p = rad(lat), l = rad(lon);
+  return [Math.cos(p) * Math.cos(l), Math.cos(p) * Math.sin(l), Math.sin(p)];
+}
+function dot3(a, b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+function cross3(a, b) {
+  return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+}
+
+/* ================= 太阳位置（视位置，精度约 0.01°） ================= */
+function subsolar(date) {
+  const jd = date.getTime() / 86400000 + 2440587.5;
+  const n = jd - 2451545.0;
+  const L = rad(((280.460 + 0.9856474 * n) % 360 + 360) % 360);
+  const g = rad(((357.528 + 0.9856003 * n) % 360 + 360) % 360);
+  const lambda = L + rad(1.915) * Math.sin(g) + rad(0.020) * Math.sin(2 * g);
+  const eps = rad(23.439 - 0.0000004 * n);
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lambda));
+  const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda));
+  const gmst = ((280.46061837 + 360.98564736629 * n) % 360 + 360) % 360;
+  const lon = normLon(deg(ra) - gmst);
+  const lat = deg(dec);
+  return { lat, lon, vec: latLonToVec(lat, lon) };
+}
+
+/* ================= 数据：城市 ================= */
+const CITIES = [
+  ['北京','Beijing',39.90,116.41,'Asia/Shanghai','中国'],
+  ['上海','Shanghai',31.23,121.47,'Asia/Shanghai','中国'],
+  ['香港','Hong Kong',22.32,114.17,'Asia/Hong_Kong','中国'],
+  ['东京','Tokyo',35.68,139.69,'Asia/Tokyo','日本'],
+  ['首尔','Seoul',37.57,126.98,'Asia/Seoul','韩国'],
+  ['新加坡','Singapore',1.35,103.82,'Asia/Singapore','新加坡'],
+  ['悉尼','Sydney',-33.87,151.21,'Australia/Sydney','澳大利亚'],
+  ['奥克兰','Auckland',-36.85,174.76,'Pacific/Auckland','新西兰'],
+  ['孟买','Mumbai',19.08,72.88,'Asia/Kolkata','印度'],
+  ['迪拜','Dubai',25.20,55.27,'Asia/Dubai','阿联酋'],
+  ['莫斯科','Moscow',55.76,37.62,'Europe/Moscow','俄罗斯'],
+  ['伊斯坦布尔','Istanbul',41.01,28.98,'Europe/Istanbul','土耳其'],
+  ['开罗','Cairo',30.04,31.24,'Africa/Cairo','埃及'],
+  ['拉各斯','Lagos',6.52,3.38,'Africa/Lagos','尼日利亚'],
+  ['约翰内斯堡','Johannesburg',-26.20,28.05,'Africa/Johannesburg','南非'],
+  ['伦敦','London',51.51,-0.13,'Europe/London','英国'],
+  ['巴黎','Paris',48.86,2.35,'Europe/Paris','法国'],
+  ['法兰克福','Frankfurt',50.11,8.68,'Europe/Berlin','德国'],
+  ['纽约','New York',40.71,-74.01,'America/New_York','美国'],
+  ['多伦多','Toronto',43.65,-79.38,'America/Toronto','加拿大'],
+  ['芝加哥','Chicago',41.88,-87.63,'America/Chicago','美国'],
+  ['墨西哥城','Mexico City',19.43,-99.13,'America/Mexico_City','墨西哥'],
+  ['洛杉矶','Los Angeles',34.05,-118.24,'America/Los_Angeles','美国'],
+  ['安克雷奇','Anchorage',61.22,-149.90,'America/Anchorage','美国'],
+  ['檀香山','Honolulu',21.31,-157.86,'Pacific/Honolulu','美国'],
+  ['圣保罗','São Paulo',-23.55,-46.63,'America/Sao_Paulo','巴西'],
+  ['布宜诺斯艾利斯','Buenos Aires',-34.60,-58.38,'America/Argentina/Buenos_Aires','阿根廷'],
+  ['苏瓦','Suva',-18.14,178.44,'Pacific/Fiji','斐济'],
+  ['雷克雅未克','Reykjavík',64.15,-21.94,'Atlantic/Reykjavik','冰岛']
+].map(c => ({ name: c[0], en: c[1], lat: c[2], lon: c[3], tz: c[4], country: c[5], vec: latLonToVec(c[2], c[3]) }));
+
+const LABEL_CITIES = new Set(['北京','上海','香港','东京','新加坡','悉尼','孟买','迪拜','莫斯科','伦敦','纽约','洛杉矶','圣保罗','檀香山','苏瓦','雷克雅未克']);
+const CLOCK_CITIES = ['北京','东京','新加坡','悉尼','孟买','迪拜','莫斯科','伦敦','法兰克福','纽约','圣保罗','洛杉矶'];
+
+/* ================= 数据：国际换日线（示意，含主要绕行段） ================= */
+const IDL_WAYPOINTS = [
+  [180, 90], [180, 68], [191.5, 68], [191.5, 52.8], [172.3, 52.8], [172.3, 50.8],
+  [180, 50.8], [180, 5], [209, 5], [209, -6], [188, -6], [188, -33], [180, -33], [180, -90]
+];
+function buildIdlPoints() {
+  const pts = [];
+  for (let i = 0; i < IDL_WAYPOINTS.length - 1; i++) {
+    const [lo1, la1] = IDL_WAYPOINTS[i], [lo2, la2] = IDL_WAYPOINTS[i + 1];
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(lo2 - lo1), Math.abs(la2 - la1))));
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      pts.push(latLonToVec(la1 + (la2 - la1) * t, lo1 + (lo2 - lo1) * t));
+    }
+  }
+  pts.push(latLonToVec(IDL_WAYPOINTS[IDL_WAYPOINTS.length - 1][1], IDL_WAYPOINTS[IDL_WAYPOINTS.length - 1][0]));
+  return pts;
+}
+const IDL_PTS = buildIdlPoints();
+
+/* ================= 数据：全球市场 ================= */
+const MARKETS = [
+  { name:'上海证券交易所', city:'中国 · 上海', tz:'Asia/Shanghai', sessions:[[570,690],[780,900]] },
+  { name:'香港交易所', city:'中国 · 香港', tz:'Asia/Hong_Kong', sessions:[[570,720],[780,960]] },
+  { name:'东京证券交易所', city:'日本 · 东京', tz:'Asia/Tokyo', sessions:[[540,690],[750,900]] },
+  { name:'韩国交易所', city:'韩国 · 首尔', tz:'Asia/Seoul', sessions:[[540,930]] },
+  { name:'新加坡交易所', city:'新加坡', tz:'Asia/Singapore', sessions:[[540,720],[780,1020]] },
+  { name:'印度国家证券交易所', city:'印度 · 孟买', tz:'Asia/Kolkata', sessions:[[555,930]] },
+  { name:'迪拜金融市场', city:'阿联酋 · 迪拜', tz:'Asia/Dubai', sessions:[[600,870]], days:[0,1,2,3,4] },
+  { name:'法兰克福证券交易所', city:'德国 · 法兰克福', tz:'Europe/Berlin', sessions:[[540,1050]] },
+  { name:'伦敦证券交易所', city:'英国 · 伦敦', tz:'Europe/London', sessions:[[480,990]] },
+  { name:'纽约证券交易所', city:'美国 · 纽约', tz:'America/New_York', sessions:[[570,960]] },
+  { name:'巴西证券期货交易所', city:'巴西 · 圣保罗', tz:'America/Sao_Paulo', sessions:[[600,1015]] },
+  { name:'澳大利亚证券交易所', city:'澳大利亚 · 悉尼', tz:'Australia/Sydney', sessions:[[600,960]] }
+];
+
+/* ================= 时区工具 ================= */
+const fmtCache = new Map();
+function getFormatter(tz) {
+  let f = fmtCache.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit',
+      second: '2-digit', hour12: false, timeZoneName: 'shortOffset'
+    });
+    fmtCache.set(tz, f);
+  }
+  return f;
+}
+function localInfo(tz, date) {
+  const parts = getFormatter(tz).formatToParts(date);
+  let wd = '', h = 0, m = 0, s = 0, tzName = '';
+  for (const p of parts) {
+    if (p.type === 'weekday') wd = p.value;
+    else if (p.type === 'hour') h = +p.value;
+    else if (p.type === 'minute') m = +p.value;
+    else if (p.type === 'second') s = +p.value;
+    else if (p.type === 'timeZoneName') tzName = p.value;
+  }
+  h %= 24;
+  return { wd: Math.max(0, WD_EN.indexOf(wd)), h, m, s, sec: h * 3600 + m * 60 + s, tzName };
+}
+const dateFmtCache = new Map();
+function localDateStr(tz, date) {
+  let f = dateFmtCache.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('zh-CN', { timeZone: tz, month: 'long', day: 'numeric', weekday: 'short' });
+    dateFmtCache.set(tz, f);
+  }
+  return f.format(date);
+}
+function daypart(h) {
+  if (h >= 5 && h < 7) return '清晨';
+  if (h >= 7 && h < 11) return '上午';
+  if (h >= 11 && h < 13) return '午间';
+  if (h >= 13 && h < 17) return '午后';
+  if (h >= 17 && h < 19) return '傍晚';
+  if (h >= 19 && h < 23) return '夜晚';
+  return '深夜';
+}
+function fmtDur(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600),
+        m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (d > 0 ? d + '天 ' : '') + f2(h) + ':' + f2(m) + ':' + f2(s);
+}
+
+/* ================= 市场状态机 ================= */
+function marketState(mk, info) {
+  const days = mk.days || [1, 2, 3, 4, 5];
+  const t = info.sec;
+  const ss = mk.sessions.map(x => [x[0] * 60, x[1] * 60]);
+  if (days.includes(info.wd)) {
+    for (const [a, b] of ss) {
+      if (t >= a - 1800 && t < a) return { st: 'pre', diff: a - t, pct: 0 };
+      if (t >= a && t < b) return { st: 'open', diff: b - t, pct: (t - a) / (b - a) };
+    }
+    for (let i = 0; i < ss.length - 1; i++)
+      if (t >= ss[i][1] && t < ss[i + 1][0]) return { st: 'lunch', diff: ss[i + 1][0] - t, pct: 0.5 };
+    if (t < ss[0][0] - 1800) return nextOpen(mk, info, days, ss);
+  } else {
+    return nextOpen(mk, info, days, ss);
+  }
+  return nextOpen(mk, info, days, ss);
+}
+function nextOpen(mk, info, days, ss) {
+  const first = ss[0][0];
+  for (let k = 0; k < 8; k++) {
+    const wd = (info.wd + k) % 7;
+    if (!days.includes(wd)) continue;
+    if (k === 0 && info.sec >= first) continue;
+    return { st: 'closed', diff: k * 86400 + first - info.sec, pct: 0 };
+  }
+  return { st: 'closed', diff: null, pct: 0 };
+}
+const MK_BADGE = { open: ['交易中','b-open'], pre: ['预开市','b-pre'], lunch: ['午间休市','b-lunch'], closed: ['休市','b-closed'] };
+
+/* ================= 陆地数据解码 ================= */
+/* 占位：构建脚本会把 world-atlas 110m 海岸线注入此处 */
+const LAND = [[-596,-800,-3,-5,-3,-5,-21,1,-22,0,-12,3,0,1,-6,2,23,0,21,-1,8,4,5,4],[-1592,-795,-19,-1,-13,3,-6,4,-1,0,-6,3,6,4,19,-2,10,-3,7,-3],[-452,-780,13,-5,4,-6,1,-4,1,-5,-16,-3,-16,-3,-19,-2,-21,-2,-24,0,-13,4,2,4,21,3,9,3,6,4,5,4,6,3,6,5,5,0,15,2],[-1212,-735,13,-2,12,2,-6,-3,-9,-3,-14,1,-10,3,2,4],[-1256,-735,16,-4,-6,1,-13,1,-14,2,7,3],[-990,-719,11,-2,11,1,6,-5,-8,1,-12,-1,-12,1,-14,-1,-10,2,-5,4,6,2,13,-2],[-685,-710,2,-4,-2,-4,-3,-4,-12,-1,-11,-2,-13,0,5,4,-12,-1,-11,-2,-8,3,0,4,11,4,7,1,11,0,3,5,1,4,0,8,5,5,9,1,6,-4,2,-3,4,-5,4,-4],[-1800,-847,1,0,8,6,18,-4,2,1,2,1,4,1,3,1,1,0,2,0,1,0,14,-4,13,4,2,0,29,2,10,-2,5,-1,15,-4,28,-2,23,-3,38,-3,29,3,43,-2,24,-3,26,3,28,3,2,4,-39,1,-33,2,-8,4,-27,2,2,5,4,4,3,3,-2,5,-16,2,-8,4,-15,3,24,-1,23,2,15,-3,17,3,17,3,8,4,-4,4,-13,2,-14,3,-21,1,-18,1,-19,1,-7,4,-13,3,-8,4,-3,11,5,-1,9,-3,17,1,16,1,8,-4,16,1,13,2,13,3,11,3,15,1,0,4,-4,4,3,3,13,2,6,-3,15,2,12,2,14,0,13,1,14,3,11,2,12,2,8,-1,7,0,14,1,14,-2,13,0,14,2,13,-1,15,-1,14,0,14,0,15,0,14,0,10,3,12,2,13,-2,12,1,11,4,6,-3,4,-4,6,-3,10,3,12,-4,14,-1,11,-3,15,1,12,2,15,-1,14,-1,14,-2,5,4,-7,4,-5,3,-12,1,-6,4,-2,3,-4,8,8,-2,13,0,13,0,12,-1,10,-3,4,-4,14,0,13,1,13,2,13,1,10,-2,13,1,9,7,8,-4,11,-2,13,1,8,-4,13,0,12,-1,12,-3,8,4,4,4,10,-4,14,1,10,-2,7,-4,13,1,10,2,11,3,12,1,14,2,13,1,9,2,6,3,3,5,-2,4,-3,4,-3,3,-3,4,-3,4,0,4,1,4,4,3,4,5,2,3,-2,5,-1,4,4,4,6,3,6,4,7,3,8,3,4,4,6,3,6,3,10,0,6,3,7,2,8,1,7,3,6,3,8,1,6,-2,-4,-4,-10,-3,-4,-2,-8,2,-8,-1,-7,-2,-7,-3,-5,-3,-1,-4,0,-4,5,-3,-7,-2,-9,-1,-6,-3,-6,-3,-6,-5,-2,-4,4,-4,5,-3,8,-2,8,-3,4,-4,2,-4,3,-4,5,-3,3,-4,1,-9,3,-4,1,-4,3,-4,-1,-5,-6,-4,-6,-3,-13,-2,-4,-3,-7,-4,-15,-3,-13,-2,-12,-2,-14,-2,-8,-4,-16,-1,-18,1,-16,-1,-16,0,3,-4,15,-2,11,-3,6,-3,-11,-3,-17,1,-14,-3,-1,-4,0,-4,12,-3,2,-4,12,-4,22,-1,18,-3,14,-3,18,-3,25,-2,24,-2,17,-3,19,-4,10,-4,5,-4,12,3,16,3,18,3,21,3,17,3,25,0,25,-1,20,-3,6,4,14,3,26,1,19,2,19,2,21,1,22,2,15,3,-7,3,-4,4,0,3,-19,0,-21,-2,-19,0,-3,4,1,8,5,2,14,2,17,2,12,3,12,3,9,4,14,2,13,1,7,1,16,1,14,1,13,2,12,2,11,3,14,3,9,3,9,3,3,4,-11,2,4,4,7,4,10,1,11,3,10,3,8,4,5,5,7,2,12,0,5,-4,12,0,0,4,5,4,11,-1,3,-4,12,-1,13,2,12,1,11,0,5,-4,11,3,10,2,11,1,11,1,11,3,11,1,8,3,6,3,8,-2,10,1,8,-5,5,-3,12,2,4,4,10,2,13,0,4,-4,8,4,11,1,12,0,11,0,11,-1,11,-1,4,-3,7,-3,11,2,11,0,12,0,11,0,10,2,11,1,8,3,10,1,10,1,8,3,5,6,6,3,10,-2,4,-3,9,-2,10,0,7,-3,7,-3,11,3,3,4,9,2,11,3,9,1,12,2,8,2,8,3,8,2,9,-1,9,3,7,3,9,0,9,2,1,4,9,3,8,1,10,2,9,1,9,-1,10,-1,8,-2,1,-5,8,-3,6,-3,12,-1,7,-3,8,-3,10,0,8,2,9,4,9,-2,10,-1,9,-2,10,0,10,0,8,-11,0,-2,-1,-5,-10,-2,-8,-4,1,-4,12,0,-2,-4,-5,-3,-5,-5,8,-3,12,-1,11,2,6,4,3,4,6,3,6,3,2,3,6,5,6,1,11,1,10,1,10,1,5,4,3,4,7,4,10,2,8,2,6,4,6,1,7,2,10,-1,9,1,10,1,11,0,7,2,5,7,4,-3,4,-5,9,-1,9,-1,10,1,10,-1,9,0,7,1,8,-1,8,-2,9,2,11,0,9,1,10,-1,7,3,5,3,7,3,12,7,7,-1,7,-3,7,-3,13,-6,10,-1,9,0,11,2,10,1,9,3,6,3,12,0,7,2,8,-2,5,-3,7,-3,11,0,7,-2,12,-3,12,-1,11,1,8,3,6,3,9,1,9,-1,11,-1,9,1,9,0,9,-1,9,-1,9,2,11,2,10,0,11,0,10,1,9,1,2,5,1,4,6,-3,2,-4,3,-4,4,-4,9,-2,11,1,13,0,9,1,13,0,10,0,13,0,11,-1,7,-3,-2,-4,6,-3,11,-2,11,-3,13,-2,14,-1,10,-2,11,0,7,3,9,-2,7,-3,9,-3,12,-1,12,-1,5,-4,11,-2,8,-4,11,-1,11,0,11,-1,12,0,12,0,11,-2,11,-2,10,-2,7,-3,-1,-4,-5,-3,-5,-5,-3,-3,-5,-5,-13,-1,-6,-4,-13,-2,-5,-4,-6,-3,-8,-4,-4,-4,-2,-3,-1,-5,0,-4,6,-4,2,-3,4,-4,19,-1,4,-5,-18,-1,-15,-2,-19,-1,-9,-5,-2,-5,-4,-4,-5,-3,13,-4,5,-4,9,-4,12,-3,14,-3,15,-3,23,-3,5,-5,29,-2,2,-1,7,-3,28,2,23,-3],[-678,-538,13,-7,14,-2,-4,-5,-10,0,-5,3,-3,-4,-8,-3,-11,1,-8,3,-10,1,-13,6,-10,5,-14,12,9,-2,14,-7,13,-4,5,5,3,7,10,4,7,-1,3,-5],[-585,-511,8,-4,-3,-4,-14,-3,-4,4,-9,-5,-5,5,12,5,8,-2],[703,-497,-16,-1,0,6,2,4,0,2,7,-3,9,-2,1,-2],[1454,-408,10,-3,5,1,8,2,6,-1,1,-12,-4,-3,-1,-8,-3,3,-7,-7,-2,0,-7,1,-6,8,-1,7,-6,8,0,5],[1730,-409,2,-4,8,4,2,-4,0,-5,-3,-4,-7,-8,-5,-4,4,-5,-8,0,-8,-3,-3,-7,-6,-10,-8,-5,-5,-2,-9,0,-6,3,-11,1,-2,3,5,8,13,10,6,2,8,3,8,6,6,5,5,7,4,3,1,5,7,5],[1746,-362,7,-10,1,7,4,-3,2,-8,8,-3,6,-1,6,4,5,-1,-2,-9,-3,-6,-8,1,-3,-3,1,-5,-1,-2,-4,-5,-5,-7,-8,-4,-1,3,-4,1,5,8,-3,6,-11,4,1,4,7,3,1,8,0,6,-4,7,0,2,-5,4,-7,9,-5,7,4,0,6,-5,7,-3],[1671,-222,-4,-2,-5,3,-7,4,-7,6,-6,7,-2,3,5,0,5,-4,5,-3,3,-3,8,-6],[1784,-173,3,-3,-1,-6,-7,-1,-5,1,-1,5,4,3,4,-1],[-1800,-166,3594,-2,-7,-2,-1,4,5,2,3,0,-3594,3,2,1,-1,-5],[1678,-165,-3,-1,-3,4,0,3],[1671,-149,2,-8,-3,1,-2,-1,-1,3,-1,8],[501,-136,1,-12,3,-4,-1,-5,-2,-3,-3,6,-2,-3,2,-8,-1,-4,-3,-2,-1,-9,-4,-11,-5,-14,-6,-19,-4,-14,-4,-11,-8,-3,-9,-4,-6,3,-8,3,-2,5,-1,9,-4,8,0,7,1,8,5,1,0,4,5,7,1,7,-3,4,-2,7,0,9,3,5,1,7,5,0,6,2,4,2,4,0,6,6,8,6,3,5,-1,4,4,-1,5,7,1,6,3,5,3,-5,3,-4],[1436,-138,3,-7,7,3,3,-4,5,-4,-1,-4,2,-9,1,-5,3,-1,3,-9,-1,-5,3,-7,11,-5,7,-5,6,-4,-1,-2,6,-7,4,-10,4,2,4,-5,2,2,2,-11,7,-6,5,-4,8,-8,2,-8,1,-5,-1,-7,5,-8,-1,-9,-2,-5,-2,-9,0,-5,-2,-7,-5,-10,-7,-4,-4,-8,-3,-5,-3,-9,-4,-5,-2,-7,-2,-7,1,-3,-6,-4,-11,0,-9,-4,-5,-4,-6,-4,-8,4,-6,2,1,5,-5,-2,-9,-7,-9,3,-5,1,-6,1,-10,3,-6,6,-2,8,-2,5,-5,4,-10,1,3,5,-2,7,-5,-7,-9,-2,6,6,1,6,4,5,-1,7,-8,-9,-6,-3,-4,-8,-8,4,0,6,-6,7,-5,4,2,2,-13,6,-7,0,-10,5,-18,-1,-13,-3,-11,-4,-10,1,-10,-5,-9,-3,-2,-5,-3,-4,-9,0,-6,-1,-9,2,-7,-1,-7,-1,-6,-5,-3,0,-5,-2,-5,-4,-7,1,-7,0,-10,6,-6,2,0,6,5,1,2,2,0,4,1,7,-1,6,-5,10,-2,6,0,5,-4,7,0,3,-4,4,-2,8,-5,8,-2,4,5,-4,-4,9,5,-3,3,-4,0,5,-5,8,-1,3,-2,3,1,6,2,2,1,5,-1,6,4,7,1,-7,4,7,9,3,4,4,8,4,5,1,2,-1,8,3,6,1,2,3,3,0,5,0,11,3,5,5,3,5,5,5,1,4,0,5,7,9,4,-9,5,2,-4,5,3,5,5,-2,1,7,5,5,3,4,5,2,0,3,4,-1,0,2,5,1,5,2,7,-5,6,-6,6,0,6,-1,-2,6,5,8,4,2,-1,3,4,6,6,3,5,-1,9,2,0,5,-8,3,6,2,6,-3,6,-4,8,-2,3,1,6,-3,6,2,4,0,2,1,5,-5,-3,-5,-4,-4,-3,0,1,-4,-3,-5,-4,-5,1,-3,8,-6,8,-3,5,-3,7,-6,3,0,5,-3,2,-3,9,-3,7,3,2,6,2,4,1,6,3,8,-1,4,0,3,-1,6,2,8,1,2,-1,3,2,5,2,6,0,3,4,3,3,-5,1,-6,2,-1,1,-4,3,-5,1,-6],[1621,-105,3,-3,-7,0,-4,6,6,-2],[1207,-102,-4,-1,-13,7,9,2,5,-3,4,-3],[1609,-99,-4,0,-6,1,-3,2,1,4,7,-2,3,-2],[1617,-96,-2,-2,-7,9,-2,6,3,0,4,-8],[1244,-101,-8,-3,-1,2,1,3,4,6,10,4,1,2,8,3,7,0,4,1,3,-1,-3,-3,-11,-4,-8,-3],[1179,-81,4,-3,6,1,2,-4,-11,-2,-7,-1,-6,0,4,5,5,1],[1229,-81,-1,-6,-15,-2,-14,1,0,4,8,2,6,-3,7,0],[1599,-83,0,-2,-8,4,-5,3,-4,4,2,1,4,-3,8,-4],[1575,-73,-2,-1,-4,2,-4,4,0,2,6,-4],[1086,-68,19,-1,3,4,18,-4,4,-7,15,-2,12,-6,-11,-4,-11,5,-9,-1,-11,1,-9,2,-12,4,-7,1,-4,-2,-18,4,-2,5,-9,0,7,10,12,-1,8,-3,4,-1],[1347,-62,-5,-7,-1,8,2,3,2,4,2,-3],[1559,-68,-3,-1,-4,4,-5,6,-2,8,2,1,1,-3,3,-3,4,-6,5,-3],[1520,-55,-5,-1,-2,-2,-5,-3,-6,-2,-5,0,-8,3,-6,3,1,3,9,-2,5,1,2,5,1,0,1,-5,6,0,3,4,5,3,-1,6,6,1,2,-2,0,-6],[1272,-35,-3,-3,-7,2,-2,4,10,1],[1305,-31,3,-8,-8,5,-8,0,-6,0,-7,0,2,6,13,0],[1531,-45,-3,-3,-2,6,-2,4,-4,3,-6,5,-7,3,2,2,6,-3,3,-2,4,-2,4,-5,4,-3],[1341,-12,3,-16,11,-6,8,11,11,6,9,0,9,-4,7,-3,11,-2,17,-7,19,-6,7,-5,5,-5,2,-6,16,-6,3,-5,-9,-1,2,-7,9,-6,6,-11,6,0,0,-4,7,-2,-3,-2,11,-4,-1,-3,-7,-1,-2,3,-9,1,-10,2,-8,6,-5,6,-6,8,-13,5,-8,-3,-6,-3,1,-8,-8,-3,-5,1,-11,1,-9,8,-10,2,-2,-3,-13,0,4,8,7,3,-3,11,-5,8,-19,9,-8,0,-15,10,-3,-5,-4,-1,-2,4,0,4,-8,5,11,3,7,0,-1,3,-15,0,-4,6,-9,2,-4,5,14,2,5,3,16,-4],[1252,14,-8,-10,-7,-2,-10,2,-16,0,-9,-2,-2,-7,9,-9,6,4,18,4,0,-5,-5,2,-4,-6,-9,-4,10,-13,-2,-3,9,-12,0,-6,-6,-3,-4,3,5,8,-10,-4,-2,3,1,4,-7,6,1,10,-7,-3,1,-12,0,-14,-6,-2,-4,3,3,9,-2,10,-4,0,-3,7,4,7,1,7,5,16,2,4,9,7,8,-3,12,-1,12,0,10,7],[1287,11,-1,-8,-5,1,-1,-7,4,-5,-3,-1,-4,6,-3,13,2,8,3,4,1,-6,6,-1],[1058,-59,-11,0,-8,9,-13,8,-4,6,-8,8,-5,7,-8,14,-8,9,-3,8,-4,8,-9,7,-5,8,-8,6,-10,11,-1,5,6,-1,16,-2,9,-9,7,-7,6,-4,9,-11,11,0,8,-7,6,-8,7,-5,-4,-8,6,-4,4,0,1,-7,4,-5,7,-1,5,-7,-2,-12],[1179,18,11,-9,-12,-1,-3,-7,0,-9,-9,-7,-1,-10,-4,-15,-1,3,-11,-4,-4,6,-7,1,-5,3,-12,-4,-4,5,-7,0,-8,1,-1,13,-5,3,-5,8,-1,9,1,9,6,7,7,-3,8,2,2,8,4,2,12,2,7,8,5,6,4,4,9,5,7,7,5,8,4,0,5,-5,1,-4,6,-3,9,-3,-1,-4,-7,0,2,-5,-7,-4,-6,-9,7,-9],[1264,84,1,-6,0,-6,-3,-9,-4,10,-4,-5,3,-8,-3,-4,-12,6,-3,7,3,5,-6,4,-3,-4,-5,1,-7,-6,-2,3,4,8,6,3,6,4,3,-5,8,3,2,5,7,0,-1,8,8,-5,1,-5],[812,62,-9,-2,-4,8,-2,14,4,16,7,-5,5,-7,5,-11,-2,-10],[-609,101,-9,-1,-2,1,3,3,0,4,6,1,2,0],[1240,103,-4,-4,-3,-6,-3,-3,-6,7,2,3,2,3,1,6,6,0,-2,-6,8,9],[1185,93,-13,-9,5,7,7,6,6,7,5,10,2,-8,-7,-6],[1219,119,6,-3,6,0,0,-4,-5,-5,-6,-3,0,5,0,5],[1255,122,3,-12,-8,3,0,-3,3,-6,-5,-3,0,7,-3,1,-2,6,6,-1,0,4,-6,8,9,-1],[1215,131,-2,-9,-5,5,-5,8,9,-1],[1213,185,6,-3,3,3,1,-3,-1,-4,3,-7,-2,-8,-6,-4,-2,-8,2,-8,6,-1,4,1,13,-5,-1,-6,3,-2,-1,-5,-8,5,-4,6,-2,-4,-7,6,-9,-2,-5,3,1,4,3,2,-3,3,-1,-4,-5,6,-2,4,0,10,4,-4,1,16,3,9],[-656,182,-2,-2,-8,0,-6,-1,0,5,1,1,8,0,5,-1],[-769,179,-3,-2,-6,2,-5,3,1,3,4,0,2,0,7,-1,5,-2,2,-3],[-726,199,9,-2,1,2,8,0,6,-3,2,0,2,-3,6,0,-1,-3,5,0,5,-4,-4,-4,-5,2,-4,0,-4,0,-1,-2,-4,0,-2,2,-3,-1,-4,-7,-3,2,0,2,-7,2,-4,-1,-7,1,-4,-2,-6,3,1,4,10,-2,7,-1,4,3,-5,4,0,4,-6,1,2,3],[1103,187,-8,-5,-8,3,-1,9,5,4,11,3,6,0,2,-4,-4,-4],[-1555,191,-2,-2,-2,2,0,2,-2,4,1,1,1,2,0,2,0,1,1,-1,4,-1,2,-1,1,-1,3,-4,-4,-3],[-1561,206,-3,0,-2,2,-1,1,1,1,3,-1,3,-1],[-1568,212,0,-1,-5,0,0,1],[-1577,213,-1,0,-3,0,-2,2,0,1,3,1,1,0],[-1593,220,-2,-1,-3,2,1,0,1,1,2,0],[-797,228,4,-4,10,1,3,-2,9,-6,6,-5,3,0,6,-2,-1,-3,8,0,7,-4,-1,-2,-7,-2,-6,0,-7,1,-15,-1,7,5,-4,3,-6,0,-4,3,-2,6,-6,0,-9,2,-3,2,-13,2,-4,2,4,2,-10,1,-7,-5,-4,0,-2,-3,-4,-1,-5,1,6,3,2,4,4,2,5,2,8,1,2,1,9,-1,8,0],[-775,238,-3,-1,-2,6,-4,3,2,6,3,0,4,-9],[1212,228,-5,-8,-5,8,-1,8,6,9,8,8,5,-3,-2,-6],[-778,266,-11,-2,-1,4,5,1,7,-1],[-770,266,-2,-7,-2,1,1,5,-5,4,0,1],[1346,341,2,-3,-6,-6,-4,3,-5,-2,-3,-6,-6,3,0,5,5,6,6,-2,4,5],[346,357,-7,-5,1,-1,0,-1,-10,-4,-5,1,-2,4,4,0,1,0,1,3,8,0],[237,357,5,-3,8,0,8,0,-1,-2,6,1,-1,-3,-15,-1,0,2,-12,2],[155,382,-3,-8,1,-3,-2,-5,-8,4,-5,1,-14,5,2,5,11,-1,11,1],[92,412,6,-7,-1,-13,-5,0,-4,-3,-4,3,0,12,-2,6,5,-1],[1410,371,-4,-8,2,-5,-5,-7,-13,-4,-18,-1,-14,-11,-7,3,0,8,-18,-2,-11,-5,-12,0,10,-8,-7,-16,-6,-5,-5,4,2,9,-6,3,-4,7,10,3,5,6,10,6,7,6,20,3,11,-2,10,18,7,-5,15,10,5,4,7,12,-2,12,4,6,11,2,5,-14,0,-8,-9,-10],[96,422,-4,-8,-4,2,-3,7,2,3,7,4],[1439,442,7,-2,7,4,2,-11,-14,-3,-9,-10,-16,7,-5,-11,-11,0,-2,10,5,7,11,1,3,14,3,8,11,-11],[-637,465,8,-1,9,0,-5,-4,-4,0,-12,4,-3,3,4,3],[-618,491,-5,0,-13,3,-9,5,3,1,13,-3,11,-4],[-1235,485,-5,-1,-17,4,-3,4,-8,3,-2,3,-11,2,-3,5,0,3,11,-2,6,-2,9,-1,4,-4,5,-4,10,-4],[-561,507,-7,-9,7,3,6,-2,-3,-3,9,-3,4,3,10,-4,-3,-7,7,2,1,-5,4,-7,-5,-8,-4,-1,-7,2,2,8,-2,2,-12,-9,-6,0,7,5,-10,2,-10,0,-20,0,-1,3,6,4,-4,2,8,6,10,16,7,6,8,3,5,0,-2,-3],[-1327,540,10,1,-4,-11,9,-8,-4,0,-6,4,-4,5,-5,3,-1,5,0,3],[1436,507,11,-17,-15,3,-6,-14,9,-11,0,-7,-8,6,-6,-7,-2,8,1,10,-1,11,2,7,1,14,-6,9,1,14,9,5,-4,4,5,2,2,-7,4,-10,-1,-9],[-68,523,-18,-6,-14,1,8,11,-5,10,14,8,7,4,9,1,10,-6,-5,-7,2,-7],[127,556,-6,-8,-11,6,-1,4,15,3],[-1530,571,-10,-4,-5,3,-2,5,9,3,6,2,6,-1,5,-3],[-30,586,-11,-10,10,1,11,0,-2,-8,-9,-9,10,-1,10,-13,7,-1,6,-12,3,-4,12,-2,-1,-6,-6,-3,4,-5,-9,-5,-13,0,-17,-3,-5,2,-6,-5,-9,1,-7,-3,-6,2,15,10,9,2,-16,2,-3,4,11,3,-6,5,2,7,15,-1,2,6,-7,6,-12,2,-3,3,4,4,-3,3,-6,-5,0,10,-6,5,4,10,8,8,8,0],[-1656,599,-6,-1,-6,1,-7,3,10,2,8,-1],[-793,622,-4,-6,-4,1,-3,3,1,1,4,3,4,0],[-819,627,-12,-5,-7,0,-2,3,8,4,13,0],[-1717,638,6,-2,6,1,8,-3,10,-1,-1,-1,-7,-2,-8,2,-4,2,-9,-1,-2,1],[-852,657,2,-5,5,2,6,-3,11,-3,12,-3,0,-5,8,1,7,-4,-9,-3,-15,3,-6,4,-10,-5,-14,-5,-4,5,-13,-1,8,5,2,8,3,9],[-145,665,-2,-7,11,-7,-13,-7,-29,-7,-9,-2,-13,1,-28,4,10,4,-22,5,18,2,0,3,-21,2,6,7,16,1,15,-7,15,6,13,-3,16,5],[-759,671,-11,0,-2,5,4,5,9,2,8,-3,0,-4,-1,-2],[-1800,690,25,-8,26,-10,-1,-6,7,-3,-3,8,27,-2,20,-9,-10,-5,-16,-1,-1,-9,-4,-2,-9,0,-8,3,-13,3,-2,5,-10,1,-12,-1,-5,3,2,4,-12,-2,5,-5,-6,-4,3600,0,-13,-5,-13,1,9,-5,6,-8,5,-3,1,-4,-3,-3,-18,2,-28,-7,-9,-1,-16,-8,-14,-6,-4,-4,-14,7,-26,-8,-5,4,-9,-5,-14,2,-3,-7,-12,-10,1,-4,11,-2,-1,-14,-10,-1,-4,-8,4,-4,-17,-6,-4,-11,-15,-2,-3,-11,-14,-9,-4,7,-4,15,-6,22,5,14,9,6,0,4,16,3,17,12,18,10,18,8,8,15,-12,-1,-6,-9,-26,-11,-8,13,-26,-4,-25,-16,8,-7,-22,-2,-15,-1,0,7,-15,2,-13,-5,-30,1,-33,-3,-32,-19,-39,-24,16,-1,5,-6,10,-2,6,5,11,-1,14,-11,1,-9,-8,-10,-1,-12,-4,-16,-15,-14,-4,-7,-13,-12,-14,-11,-6,-6,-14,-6,-6,0,-6,5,-14,-7,-1,-4,-4,1,-4,-4,-3,-3,0,-7,-5,-2,-2,-2,-4,-3,-6,-2,-5,-2,0,-5,-1,-1,4,-1,6,-5,8,-12,3,-6,0,-12,-4,-5,-9,-2,-8,-4,-9,-1,-1,5,2,8,-5,10,8,2,-7,8,-5,2,-1,-1,-3,-1,-1,2,-2,0,-3,2,3,4,2,2,-1,1,3,6,-1,2,-6,1,-4,2,-14,-3,-8,-4,-10,-3,5,5,-2,4,8,6,-6,5,-8,-3,-12,-7,-6,-6,-10,-1,-5,-5,6,-6,8,-2,0,-5,8,-2,11,7,9,-4,7,0,1,-6,-14,-2,-5,-6,-9,-5,-5,-7,10,-5,4,-10,6,-9,7,-8,0,-8,-6,-2,2,-6,6,-3,-2,-8,-2,-8,-6,-1,-7,-10,-8,-14,-9,-12,-14,-9,-14,-8,-11,-1,-6,-5,-4,3,-6,-4,-14,-5,-10,-2,-4,-11,-5,0,-3,7,3,4,-14,3,-5,-1,-13,-9,-8,-9,-2,-7,7,-11,10,-13,9,-6,6,-8,4,-19,-1,-17,-8,-7,-12,-6,-8,-9,-12,-9,-4,6,3,7,-8,6,-8,1,-4,6,-5,10,-9,4,-9,0,2,8,-9,0,-1,-11,-5,-15,-3,-8,0,-8,7,0,4,-9,2,-9,5,-5,6,-2,5,-5,3,-1,6,-6,4,-6,0,-7,-1,-5,1,-3,1,-6,4,-3,3,-9,0,-3,-7,-1,-9,8,-12,8,-1,5,-6,6,-1,9,-4,5,1,7,-2,5,-4,3,-2,5,-5,6,-5,5,-2,-6,-2,5,2,7,3,9,-1,8,3,7,-4,6,1,11,-4,5,-3,12,-2,13,-4,8,-7,-5,-11,-7,-6,1,-6,2,3,13,-2,9,-8,12,2,3,-6,2,-7,8,-3,5,-1,5,-2,5,-4,6,-9,0,1,-4,-3,-6,-5,2,-1,-1,-3,1,-4,1,-1,-4,-7,0,-12,-2,0,-8,-5,-5,-14,-7,-12,-12,-7,-6,-10,-7,0,-4,-5,-3,-9,-3,-5,-1,-3,-8,2,-13,1,-8,-4,-9,0,-17,-6,-1,-4,-8,3,-3,-9,-3,-4,-6,-4,-3,-9,9,-5,14,-4,10,-3,5,-5,9,-3,13,-2,6,-9,14,-4,19,-3,13,0,12,-2,10,-14,-6,-7,1,-13,12,4,4,-3,3,-11,9,-8,2,-3,8,-7,7,-19,-2,-16,0,-14,-1,-19,3,-11,2,-11,1,-4,13,-5,1,-8,-1,-10,-5,-12,3,-10,8,-10,3,-6,9,-8,13,-5,-1,-7,3,-3,-4,-6,1,2,-5,-1,-2,3,-7,4,-9,5,-2,2,-4,7,-4,0,-4,-1,-4,1,-3,3,-3,2,-3,1,-2,-1,7,3,5,3,1,3,-3,0,-6,-2,-6,2,-4,2,1,0,-3,8,2,8,0,6,-1,7,7,7,6,7,7,3,3,1,-1,-1,-4,-1,-2,1,-8,4,-7,6,-3,7,-2,6,-1,5,-6,2,-3,4,-2,0,-2,-4,-6,-1,-3,-4,-3,-4,-7,-5,1,-2,-3,-1,-5,1,-6,-1,-2,-5,0,-6,-3,-1,-5,-2,-2,-6,0,-4,-3,0,-4,-5,-3,-6,1,-6,-3,-5,0,-7,-3,-2,-5,0,-3,-10,-4,-16,-5,-9,-7,-5,-1,-3,1,-5,-4,-7,-2,-8,-1,-3,0,-2,-3,-3,0,-1,-3,-5,0,-3,-1,-7,0,-3,6,1,6,-2,3,-2,7,-3,4,2,1,-1,4,1,2,0,4,-1,5,-4,3,0,4,-5,3,-6,9,-3,8,-7,7,-4,1,-7,10,-1,7,1,6,-6,11,-5,4,-5,2,-3,6,0,2,-3,5,-3,2,-3,8,-7,8,-5,7,-5,0,2,5,0,4,2,4,-1,1,-3,-4,-2,-8,-2,-5,-3,-2,-3,4,-5,4,-7,15,-1,-1,4,-11,6,-10,8,-16,4,-5,3,-6,9,-11,-2,-1,0,-7,12,-9,2,-2,3,-10,-2,-2,1,-10,4,-12,4,-2,5,-4,6,-12,3,-9,5,-5,14,-9,5,-6,6,-6,3,-3,5,-3,2,-3,0,-4,-6,-3,4,-2,4,-2,2,-4,4,-5,5,0,10,3,10,1,9,3,5,1,4,2,5,0,4,0,4,2,6,1,4,3,4,0,0,-3,-1,-5,0,-6,-2,-3,-2,-11,-5,-11,-6,-13,-9,-15,-9,-11,-11,-13,-10,-9,-15,-9,-10,-8,-11,-12,-2,-5,-2,-3,-7,-4,-3,-4,-3,-1,-2,-7,-3,-4,-2,-6,-4,-4,-5,-12,1,-6,6,-3,1,-3,-3,-6,1,-3,-1,-5,3,-6,5,-10,3,-2,2,-5,-1,-10,2,-8,0,-16,2,-5,-3,-7,-4,-7,-6,-6,-10,-4,-11,-5,-11,-11,-4,-1,-7,-8,-4,-2,-1,-7,5,-8,2,-5,0,-3,2,0,-1,-10,-1,-4,2,-2,-1,-4,-5,-4,-8,-3,-12,-6,-4,-3,1,-4,2,-1,-1,-5,-2,-8,-1,-8,-3,-5,-7,-5,-2,-1,-4,-5,-3,-5,-5,-7,-12,-11,-7,-6,-7,-4,-11,-4,-5,-1,-1,-2,-6,1,-5,-2,-11,2,-6,-1,-4,0,-11,-4,-8,-1,-6,-4,-5,0,-4,3,-3,1,-5,4,0,-1,-2,2,1,6,-4,7,3,2,0,7,-6,10,-5,8,-8,13,-7,8,-4,7,-2,10,-3,7,-3,15,0,12,-1,6,-4,4,-5,8,-6,12,-2,7,-8,9,-1,8,-1,6,2,9,3,9,1,5,3,9,2,4,6,6,3,5,1,7,0,6,-3,3,-3,6,-2,6,0,2,3,4,-3,10,-2,7,-5,6,1,2,-1,3,-3,8,-8,10,-10,10,-7,9,-6,10,0,3,2,3,3,8,2,7,-2,2,3,11,2,8,-4,6,-5,2,-2,5,-2,1,0,3,-10,-4,-4,1,-4,-3,-8,1,-5,6,-4,7,-7,7,-7,0,-9,0,-8,-2,-8,-2,-16,-6,-6,-3,-9,-3,-9,3,-4,0,-7,2,-6,0,-12,-2,-7,-3,-10,-4,-2,1,-3,0,-10,4,-9,8,-9,5,-6,7,-3,1,-7,4,-5,5,-2,4,-1,7,-5,6,-4,4,-2,1,-3,2,-1,5,-1,2,-3,1,-6,5,-4,0,-2,3,0,2,-3,2,-1,2,-1,8,1,4,-4,8,-5,3,4,2,5,7,2,5,-1,6,3,5,2,9,-2,10,-1,5,1,5,-2,5,-6,4,1,4,0,5,4,3,3,5,0,3,3,7,6,7,3,1,3,6,0,5,4,7,6,3,7,10,5,4,9,1,8,7,5,3,8,8,-2,13,4,8,1,6,6,6,10,5,8,4,7,10,3,7,7,0,6,-5,10,1,10,-2,4,0,10,5,11,2,6,4,10,3,17,2,16,1,5,-2,10,4,10,0,4,-2,7,0,11,5,7,-2,0,-5,8,4,1,-2,-5,-5,0,-5,3,-2,-1,-9,-6,-5,1,-5,6,0,2,-5,4,-2,12,-3,4,1,8,-2,13,-4,5,-9,9,-2,14,-4,11,-5,5,2,5,5,-3,8,3,4,8,5,6,1,14,-2,3,-4,4,0,3,-2,10,-1,3,-3,13,0,10,-3,9,-3,5,-1,8,3,4,3,9,1,7,-2,3,-5,2,4,8,-3,8,0,5,2,3,3,-1,1,3,5,2,7,1,3,4,8,5,7,-1,8,2,4,-3,5,4,4,-6,-1,-9,2,-7,-6,-15,-1,-8,5,-11,1,-2,-4,-7,-2,-10,6,-11,0,-6,10,-7,5,5,8,-6,5,11,9,15,1,4,7,19,-1,12,6,12,3,17,0,17,-7,14,-4,12,2,9,-1,12,5,1,5,-2,6,-6,4,-6,1,-3,3,-13,9,-12,4,-8,5,7,2,8,8,-5,4,14,4,0,3,-9,-2,-8,-1,-6,-3,-10,-1,-8,-3,0,-6,5,-3,10,1,-2,-4,-11,-2,-13,-5,-6,2,2,4,-10,3,1,2,10,4,-3,2,-16,2,0,4,-10,-1,-3,-6,-8,-7,0,-3,-5,-2,-3,1,-2,-12,-6,-4,-3,-7,3,-6,1,-4,9,-3,-2,-2,-12,-1,-4,-3,-8,-5,-4,4,1,2,-7,1,-5,0,-12,-2,7,-6,-5,-1,-6,0,-5,5,-2,-2,3,-6,5,-5,-4,-2,5,-5,5,-3,0,-5,-9,2,3,-5,-6,-1,4,-9,-7,0,-8,4,-4,8,-2,7,-4,5,-5,5,0,3,-2,1,0,2,-6,4,-1,4,1,7,1,3,-1,2,-2,1,-3,3,-5,2,-9,3,-6,4,-9,3,-8,7,2,1,-5,4,0,4,-6,1,-3,-4,-3,3,0,4,2,1,-8,1,-8,-3,1,-5,-1,-3,3,-5,9,-5,5,-8,11,-8,8,0,3,-3,-3,-2,9,-3,7,-3,9,-5,1,-2,-2,-4,-6,5,-8,1,-4,-6,7,-4,-1,-5,-5,-1,-5,-8,-4,-1,0,3,2,6,2,2,-4,5,-3,5,-4,2,-3,4,-6,2,-5,4,-7,1,-8,4,-9,7,-7,5,-3,10,-5,1,-8,4,-5,-2,-6,-4,-4,-1,-9,-6,-19,3,-15,-3,-1,-6,0,-6,-9,-7,-13,-2,-1,-3,-6,-6,-4,-8,4,-6,-6,-4,-2,-7,-7,-2,-7,-7,-13,0,-10,0,-6,-4,-4,-4,-5,1,-3,4,-3,5,-10,2,-4,-3,-5,2,-5,-1,2,8,-1,6,-5,1,-2,3,1,7,4,4,0,4,2,6,0,4,-2,3,0,4,0,7,-4,4,14,7,12,-1,14,0,11,-2,8,1,16,-1,5,6,2,20,-10,11,-8,5,-15,4,-1,7,13,2,17,-3,-3,12,9,-5,23,8,3,8,9,2,8,2,5,3,9,15,14,4,8,0,2,2,8,0,2,-2,7,5,-2,4,-1,6,-4,5,0,10,2,3,2,3,9,1,4,2,8,3,-1,-5,-2,-3,1,-3,5,-1,-2,-4,-3,1,-8,-7,3,-5,0,-4,10,-2,0,-4,11,2,5,3,11,-4,5,-3,7,3,16,4,12,4,10,-2,1,-3,10,0,2,5,14,3,-2,8,0,8,5,6,9,4,8,-8,8,0,2,8,1,6,-3,-1,-7,3,-1,6,13,3,13,1,10,-2,11,1,11,5,-10,5,-18,-1,-18,-3,-16,-3,-6,6,-10,3,2,10,-4,9,4,6,9,6,23,11,7,2,-1,4,-14,5,-17,-3,-10,-7,2,-6,-16,-8,-20,-9,-7,-14,7,-7,10,-5,-9,-11,-11,-3,-4,-17,-5,-9,-12,1,-6,-8,-12,0,-3,9,-8,11,-8,15,-6,6,-20,-12,-13,-2,-14,5,-4,11,-3,23,9,6,27,9,19,10,19,14,24,19,16,8,28,12,22,5,16,-1,15,8,19,0,18,2,31,-7,-13,-3,11,-6,10,3,17,-6,27,-2,38,-12,8,-4,0,-7,-11,-5,-16,-3,-45,8,-7,-2,16,-7,1,-15,13,-3,8,-2,1,4,-6,5,7,3,24,-6,8,3,-6,7,23,10,9,-1,10,-3,5,7,-8,6,5,6,-7,6,28,-4,5,-5,-12,-1,0,-6,7,-3,16,2,2,6,21,5,35,9,8,-1,-10,-6,12,-1,7,3,19,1,15,4,11,-6,12,6,-11,6,6,4,29,-4,14,-3,36,-11,7,5,-10,5,-1,3,-12,1,4,4,-6,8,0,3,18,9,7,9,7,2,27,-2,2,-6,-10,-8,7,-3,3,-7,-2,-14,11,-6,-5,-7,-19,-14,11,-1,4,3,11,3,3,5,9,5,-6,5,4,7,-11,1,-2,5,8,10,-13,8,18,7,-2,7,5,1,5,-6,-4,-10,11,-1,-5,7,17,4,21,0,18,-6,-9,9,-1,10,18,3,24,-1,21,1,-8,6,12,6,11,0,20,5,26,2,3,2,27,1,8,-2,22,5,19,0,2,5,10,4,24,4,17,-3,-14,-3,23,-1,2,-5,10,2,29,0,22,-5,8,-4,-2,-5,-11,-3,-26,-5,-8,-3,12,-2,15,-2,9,2,5,-7,5,3,16,2,32,-2,2,-5,42,-1,1,7,21,-1,16,0,16,-6,5,-6,-6,-4,12,-8,16,-4,10,10,16,-4,17,3,19,-4,7,3,17,-1,-8,9,14,4,90,-6,9,-6,26,-8,40,2,20,-1,8,-4,-1,-8,12,-3,14,2,18,1,18,-2,19,1,18,-9,12,3,-8,7,5,4,31,-3,21,1,29,-5],[491,413,5,-7,5,-1,3,-2,-8,-1,-2,-8,-2,-4,-3,-2,0,-5,3,-7,9,-2,7,-5,15,-2,15,3,1,2,-2,7,2,11,-8,3,3,7,-7,0,2,9,10,-3,8,4,-7,6,-3,5,-8,-2,-1,-8,-3,7,-1,2,3,4,-2,4,-12,3,-4,9,-6,3,0,3,10,-1,0,7,9,2,8,-1,2,9,-2,7,-10,-1,-8,2,-12,-4,-9,-2,-5,-6,-9,-2,-10,-10,9,-9,-1,-7,11,-12],[-956,691,-7,-3,-13,3,-8,-1,-14,4,9,3,7,4,10,-2,6,-2,3,-2],[-1800,715,3600,-7,-11,0,-2,3],[-1800,715,1,1,9,0,14,-3,-1,-2,-10,-2,-13,-1],[-905,695,0,-10,13,8,12,-7,-3,-7,10,-7,10,7,7,9,1,11,14,-1,15,-1,13,-5,1,-5,-8,-6,7,-5,-1,-5,-19,-7,-14,-1,-11,3,-3,-5,-9,-9,-3,-4,-12,-7,-14,-1,-8,-4,-1,-6,-11,-2,-13,-8,-10,-11,-4,-8,-1,-12,15,-1,4,-10,5,-7,14,2,19,-4,10,-4,7,-5,12,-3,11,-4,16,-1,11,-1,-1,-8,3,-10,7,-11,15,-10,8,3,5,11,-5,15,-7,6,16,4,11,7,6,7,-1,7,-7,9,-12,7,12,11,-5,9,-3,15,7,3,17,-3,10,-1,9,2,9,-3,12,-6,3,-4,18,0,0,-9,3,-12,9,-2,7,-6,15,6,10,11,6,4,8,-9,13,-12,11,-12,-4,-7,13,-5,9,-6,16,-3,7,-3,4,-8,7,-2,4,-3,1,-12,-7,-3,-7,-4,-17,-3,-12,-9,-17,-1,-22,2,-15,0,-10,-1,-8,-7,-13,-4,-15,-14,-11,-9,8,2,16,13,21,8,15,1,9,-5,-9,-6,3,-11,3,-8,13,-5,17,2,10,11,0,-7,7,-4,-12,-6,-23,-6,-9,-4,-12,-8,-7,1,-1,9,18,8,-16,0,-11,-2,1,-3,-10,-5,-11,-3,-10,-3,-6,-7,-1,-1,0,-6,3,-5,4,0,-1,3,3,-2,-1,-3,-6,-1,-5,0,-8,-2,-4,0,-6,-1,-8,-3,15,2,3,-2,-14,-3,-7,0,0,2,-3,-3,3,-1,-2,-7,-7,-8,-1,3,-2,0,-3,3,2,-5,2,-2,0,-4,-3,-4,-5,-8,-1,1,3,6,-5,4,-2,8,-1,-4,2,-6,-7,1,7,-3,0,-9,3,-1,1,-3,2,-10,-7,-8,-10,-3,-7,-6,-5,0,-5,-4,-1,-3,-11,-7,-6,-5,-4,-6,-2,-7,2,-7,3,-8,5,-7,0,-5,4,-11,0,-7,0,-4,-3,-6,-3,-1,-5,1,-1,4,-4,3,-5,8,-5,8,-2,4,2,7,-2,5,-8,8,-4,2,-10,-5,-2,1,-5,5,-6,2,-11,-1,-9,1,-8,-1,-4,-1,2,-3,0,-4,2,-2,-2,-1,-4,1,-4,-2,-7,0,-7,6,-9,-1,-7,2,-6,-1,-9,-2,-9,-8,-10,-4,-5,-5,-3,-4,0,-7,1,-5,2,-3,-4,-9,-2,-7,-1,-14,-1,-5,2,-5,3,-5,2,-8,7,-7,2,-6,4,-5,11,-2,4,-5,9,3,7,1,8,2,6,2,6,4,3,6,0,8,2,3,7,3,11,2,8,0,6,0,3,-2,0,-5,-6,-5,-2,-7,2,-1,-2,-5,-2,-7,-3,2,-2,0,0,-1,2,-1,0,-2,-2,-5,1,-1,-1,-4,1,-1,-2,-5,-2,-2,-1,-1,-2,-3,3,-2,1,2,3,-2,1,0,2,2,3,0,1,-1,1,0,5,0,5,0,3,1,1,1,3,0,3,-1,2,0,2,1,5,-1,1,-1,3,-2,3,-2,4,-1,3,-3,-1,-1,-1,-2,1,-4,-2,-3,-1,-4,-1,-5,1,-2,0,-5,-1,-1,-1,-4,0,-3,-2,-2,1,-3,1,-2,3,-5,4,-4,5,-4,3,-4,0,-2,4,0,1,0,3,-2,5,1,4,2,6,2,3,3,6,0,-1,-1,6,-1,4,-2,4,-3,3,-2,6,-1,7,7,4,1,0,4,2,8,6,5,6,0,1,2,8,-1,8,5,4,3,4,4,4,0,3,-3,-2,-3,-1,-3,-5,-1,3,-4,0,-6,-5,-5,4,-8,4,0,3,8,-4,3,0,8,12,4,-1,4,4,4,3,-7,7,-1,7,-5,0,-3,9,-1,11,1,5,-4,8,-1,6,3,0,2,12,1,12,0,-8,-3,3,-5,8,0,8,-5,1,-8,5,0,4,-2,7,-4,6,-7,0,-5,4,0,6,-5,4,-3,12,-2,1,2,8,0,10,-2,4,-2,7,-2,11,-8,1,-4,4,0,2,-6,6,-17,5,-2,1,-7,-8,-8,3,-3,18,-1,0,-10,8,6,12,-3,17,-7,5,-5,-2,-6,12,3,19,-5,15,0,15,-8,13,-11,7,-3,9,0,4,-4,3,-12,2,-6,-4,-17,-5,-6,-14,-14,-7,-12,-7,-8,-3,-1,-3,-7,1,-19,-3,-15,-1,-7,-3,-4,-2,-13,-10,-13,-1,-10,-9,-5,-2,-6,-11,0,-15,-4,-8,-4,-11,-3,-11,-8,-9,-10,-1,-7,1,-6,-2,-10,-2,-5,-7,-5,-11,-18,-9,-8,-7,-4,-4,-10,-7,-6,-4,-6,-11,-6,-8,2,-5,-1,-9,5,-7,-1,-6,6,-1,-5,13,-9,-2,-7,7,-4,-1,-5,-9,-13,-15,-5,-20,-2,-11,1,2,-6,-2,-8,2,-5,-6,-3,-11,-2,-9,4,-4,-3,1,-10,7,-3,5,4,3,-6,-9,-3,-8,-6,-1,-10,-3,-5,-9,0,-8,-6,-3,-7,10,-7,10,-2,-4,-9,-12,-6,-6,-12,-9,-4,-4,-4,3,-11,6,-6,-4,1,-9,0,-4,-2,-9,-4,-2,-9,-4,-1,-12,4,-11,7,-12,5,-4,7,3,6,-5,6,-1,17,4,10,11,8,-15,3,9,8,3,17,12,-4,5,21,-7,3,-3,-13,-6,2,3,14,3,19,5,6,-3,10,-1,11,4,1,6,16,7,16,5,15,-3,15,3,8,-1,12,6,13,2,19,3,21,3,22,-1,16,-2,15,-10,5,-1,4,-19,10,-18,11,-8,7,-4,8,1,3,-8,13,-10,18,-9,20,-4,5,-4,7,-7,7,-8,4,4,4,-5,10,3,7,8,6,5,7,-2,5,-4,-5,-6,5,2,2,-1,9,3,2,2,6,4,7,-1,4,6,2,6,4,-1,3,4,1,-1,5,3,3,5,1,4,6,4,5,-4,3,2,6,-2,9,2,2,-2,9,-4,5,-3,3,-2,6,2,2,-2,1,-2,3,-5,3,-5,-1,-2,-3,-4,-3,-2,0,-1,-2,5,-6,-3,-1,-1,-1,-5,-1,-2,6,-1,-2,-3,1,-2,4,-4,1,-3,1,-4,0,0,-2,-2,1,-5,2,-2,3,1,1,0,3,-3,2,-4,2,-3,1,-1,3,-3,2,1,-3,-2,-2,-2,2,-4,1,-1,2,0,3,1,4,-2,1,2,2,-4,3,-4,4,-2,3,-5,4,-5,4,1,2,2,-2,1,1,-2,3,-3,1,-1,-3,-6,1,-3,1,-5,2,-5,0,-3,2,-5,2,-6,0,-5,2,-5,4,-12,11,-5,3,-8,3,-6,-1,-8,-3,-5,-1,-7,2,-7,2,-9,5,-8,1,-11,5,-9,4,-2,3,-6,1,-10,3,-4,4,-11,6,-5,6,-2,5,3,1,-1,3,2,3,0,3,-3,5,-1,4,-3,5,-9,10,-10,7,-5,7,-9,4,-1,2,1,6,-5,3,-6,5,-2,7,-6,0,-6,6,-4,5,-1,3,-5,7,-4,8,1,4,-8,4,-3,-1,-6,3,-1,-4,1,-5,1,-7,4,-4,7,-7,2,-3,1,0,2,-4,1,0,2,-6,3,-3,3,-3,6,-5,3,-10,3,-4,3,-5,0,-5,5,0,4,-5,4,-4,0,-2,-5,-4,-1,0,-3,6,-7,6,-7,5,-5,2,0,8,-1,5,-5,3,-7,5,-1,-2,-2,3,-7,2,-6,6,1,1,4,-1,4,4,0,5,-7,7,-6,3,-4,6,-4,6,-4,8,-4,9,-2,5,-6,6,-5,1,-1,3,-6,1,-3,2,-10,1,-2,2,-1,6,-10,10,-8,14,0,2,-5,3,-7,9,-2,8,-5,5,2,8,0,9,-3,8,4,9,2,18,-2,14,-3,8,-3,5,1,2,15,-4,5,-9,3,3,-2,8,-3,8,-2,0,-19,10,-7,4,-18,4,-6,9,2,6,-13,5,-2,8,-12,7,0,5,-6,4,-9,3,-2,9,-13,8,-6,9,-9,1,-16,0,-12,3,-21,10,-9,2,-18,4,-14,-1,-19,5,-12,4,-11,-2,2,-7,-6,-1,-11,-2,-9,-3,-11,-2,-2,5,5,10,11,3,-3,3,-13,-6,-7,-6,-14,-7,7,-5,-9,-8,-11,-4,-10,-3,-3,-4,-15,-5,-3,-5,-12,-4,-7,0,-9,-2,-10,-4,-9,-3,-17,-3,-1,2,11,4,9,3,11,6,12,1,5,4,14,6,2,2,8,4,1,7,6,6,-12,-3,-3,2,-6,-4,-6,5,-3,-3,-4,5,-10,-4,-6,0,-1,6,2,3,-6,4,-13,-2,-9,5,-6,2,-1,6,-7,4,4,6,8,5,3,5,8,1,7,-1,8,4,8,0,7,3,-2,4,-5,2,7,4,-6,0,-11,-2,-3,-3,-7,3,-15,-2,-14,3,-4,4,-13,6,14,4,22,5,8,0,-1,-5,21,0,-8,6,-12,4,-7,5,-10,4,-14,4,6,5,18,0,12,5,3,5,10,4,10,1,19,5,9,-1,15,6,15,-3,8,-4,4,2,17,-1,-1,-2,16,-2,10,1,21,-3,19,-1,8,-1,13,2,15,-3,11,-2,19,-2,16,-5,10,-1,9,4,12,3,15,-1,15,4,16,3,7,-4,7,2,3,5,7,-1,16,-9,14,7,1,-8,12,2,4,3,12,-1,16,-4,23,-4,14,-2,10,1,13,-5,-14,-5,18,-2,27,1,9,2,10,-6,11,5,-10,4,6,4,12,0,9,1,8,-2,10,-6,11,1,17,-5,16,2,15,0,-2,6,9,2,16,-4,0,-9,6,8,8,0,5,10,-11,6,-12,4,1,11,12,7,13,-1,10,-5,14,-11,-9,-5],[-1142,731,-5,-4,23,3,13,-5,12,5,9,-4,8,-9,5,4,-7,10,9,1,10,-1,11,-4,6,-10,3,-7,17,-5,18,-5,-1,-4,-16,-1,6,-4,-3,-3,-18,1,-18,3,-11,-1,-19,-3,-30,-2,-13,-1,-6,5,-13,3,-9,-1,-12,8,6,1,16,1,14,0,13,2,-19,2,-22,-1,-14,0,-5,4,23,4,-16,0,-17,3,8,7,7,4,27,6],[-1045,734,-9,-6,-15,7,3,1,13,0],[-763,731,0,-3,-10,1,-11,0,-11,-2,-3,1,-11,5,1,4,4,1,23,-1],[-866,732,8,-7,9,8,26,5,17,-11,-2,-6,20,3,10,4,22,-6,14,-4,1,-5,19,3,10,-7,24,-4,9,-4,9,-9,-18,-5,23,-6,16,-3,15,-9,15,0,-3,-7,-17,-12,-12,4,-16,10,-13,-1,-1,-6,10,-6,14,-5,4,-2,6,-10,-3,-7,-13,2,-25,8,14,-8,11,-6,1,-4,-27,4,-21,6,-12,5,3,3,-15,5,-14,5,0,-3,-29,-2,-9,4,7,7,19,0,20,2,-3,3,4,5,12,10,-2,4,-4,4,-15,5,-21,3,7,2,-11,7,-9,0,-8,4,-5,-3,-18,-2,-36,3,-22,3,-16,1,-8,4,10,4,-14,0,-3,10,8,9,10,4,26,3],[-1004,738,12,-2,18,2,3,-3,-10,-5,16,-4,-2,-9,-17,-4,-9,1,-7,3,-25,8,0,3,21,-1,-11,7],[1436,732,-15,0,-21,1,-1,1,9,4,13,1,14,-4],[-932,728,-11,-8,-11,1,-6,8,0,5,5,5,10,2,21,0,19,-2,-15,-9],[-1205,714,-26,-5,-5,4,-23,6,3,3,8,8,9,7,-10,6,34,1,14,-2,25,0,10,-3,11,-4,-13,-3,-24,-7,-13,-7],[1507,751,-11,-4,-16,1,-19,4,3,3,18,-2],[-936,750,-6,-4,-14,1,-12,2,5,5,14,2,9,-3],[1451,756,-8,-8,-37,0,-16,-2,-20,7,5,6,13,2,27,0],[-985,767,8,-4,0,-6,-5,-7,-16,-1,-11,2,0,5,-16,0,-1,7,11,0,15,3,14,0],[-1082,762,4,-4,9,2,10,0,2,-5,-6,-5,-34,-1,-25,-5,-15,0,-2,3,21,5,-45,-2,-14,2,14,10,9,3,28,-4,18,-6,17,0,-14,9,9,4,10,-1],[575,707,-6,-1,-32,2,-3,4,-18,3,-1,5,10,2,-1,6,20,8,-9,2,24,8,-3,5,23,5,33,7,33,1,17,4,20,1,7,-4,-7,-3,-36,-5,-30,-4,-31,-10,-15,-10,-16,-9,2,-9],[-947,771,11,-3,20,0,9,-3,-3,-4,12,-3,6,-2,14,0,14,-1,16,2,20,1,17,-1,10,-4,3,-4,-7,-2,-14,-3,-13,2,-29,-2,-20,0,-17,1,-26,3,-4,6,-1,5,-10,4,-21,1,-11,4,4,4],[-1162,776,-1,-7,-8,-4,-9,0,-19,-4,-16,-2,-14,2,17,8,21,6,15,0],[-938,775,-5,0,-19,1,-2,2,20,0,7,-2],[-1102,777,-19,-3,-14,3,8,4,14,1,14,-2],[247,779,-22,-5,-18,3,7,2,-6,4,21,2,4,-4],[-1097,786,-12,-2,-16,0,0,2,10,3,5,-1],[-958,781,-15,-3,-8,3,-5,4,0,4,13,-1,5,0,12,-4],[-1001,783,4,-4,-16,1,-16,3,-23,1,10,3,-12,2,-1,4,20,-1,27,-4],[1051,783,-57,-4,19,13,8,1,7,0,26,-6],[183,797,32,-7,-25,-4,-5,-8,-9,-2,-5,-8,-12,0,-21,6,9,3,-15,3,-20,9,-8,8,28,3,5,-3,14,0,4,3,15,1],[254,804,20,-3,-15,-6,-29,-1,-29,2,-2,2,-14,1,-11,4,31,3,14,-2,10,3],[511,805,-13,-1,-9,-1,-1,-1,-12,-2,-11,2,6,4,-23,0,20,2,15,0,2,-3,6,3,9,1,15,-2],[999,789,-21,-1,-28,2,-17,4,-8,7,-13,2,26,7,21,3,20,-6,23,-9],[-870,797,12,-4,-14,-3,-18,-7,-18,-1,-21,1,-11,5,1,3,8,3,-19,0,-11,3,-6,5,7,4,7,3,10,1,-4,2,23,1,13,-6,17,-2,16,-2],[-685,831,27,-1,21,-1,18,-3,0,-2,-24,-5,-25,-2,-9,-2,22,0,-23,-6,-17,-3,-17,-8,-20,-2,-7,-2,-30,-1,14,-1,-7,-2,8,-5,-9,-3,-16,-3,-5,-4,-14,-3,2,-2,17,0,0,-2,-27,-6,-26,3,-29,-2,-15,1,-19,1,-1,5,18,2,-5,7,7,1,26,-5,-13,7,-17,2,8,4,18,2,3,3,-14,4,-4,6,27,-1,8,-1,16,4,-23,1,-35,-1,-18,4,-8,4,-12,3,-2,3,15,2,12,0,19,2,15,4,12,-1,11,-3,8,6,13,1,18,1,30,1,6,-1,29,1,21,0],[-271,835,63,-8,-19,-4,-38,0,-54,-1,5,-2,35,1,31,-3,19,3,8,-4,-11,-5,26,3,48,4,30,-2,6,-4,-41,-7,-5,-3,-32,-1,23,-1,-12,-7,-8,-6,0,-12,12,-6,-15,-1,-17,-3,19,-5,2,-9,-11,0,13,-9,-22,-1,12,-4,-4,-3,-14,-2,-14,0,13,-7,0,-4,-20,4,-5,-3,14,-2,13,-6,3,-8,-17,-2,-8,4,-12,5,3,-6,-12,-6,27,0,14,-1,-27,-8,-27,-8,-30,-4,-11,0,-10,-4,-14,-10,-22,-7,-6,-1,-14,-2,-14,-2,-9,-7,0,-7,-5,-6,-16,-8,4,-8,-5,-8,-5,-10,-14,-1,-15,9,-20,0,-9,5,-7,10,-17,12,-5,7,-2,9,-14,9,4,7,-7,4,10,12,15,3,4,4,2,8,-11,-3,-6,-2,-9,-1,-12,3,-1,7,4,5,10,0,20,-2,-17,6,-9,3,-10,-1,-8,3,11,9,-6,4,-8,7,-12,10,-13,4,0,4,-27,6,-21,1,-27,-1,-24,0,-12,3,-17,6,26,3,20,1,-42,2,-23,4,1,4,38,5,37,5,4,4,-27,3,9,4,34,7,15,1,-4,5,23,2,31,2,31,0,11,-3,26,5,24,-3,14,-1,21,-3,-24,5,1,4,34,6,35,0,13,3,35,1]];
+const LAND_RINGS = LAND.map(arr => {
+  const pts = new Float32Array(arr.length / 2 * 3);
+  let X = 0, Y = 0;
+  for (let i = 0, j = 0; i < arr.length; i += 2, j += 3) {
+    if (i === 0) { X = arr[0]; Y = arr[1]; } else { X += arr[i]; Y += arr[i + 1]; }
+    const v = latLonToVec(Y / 10, X / 10);
+    pts[j] = v[0]; pts[j + 1] = v[1]; pts[j + 2] = v[2];
+  }
+  return pts;
+});
+
+/* ================= 经纬网预生成 ================= */
+function buildLine(pts) { return pts.map(p => latLonToVec(p[0], p[1])); }
+const GRAT_MAJOR = [];
+for (let lon = -150; lon <= 150; lon += 30) {
+  const line = [];
+  for (let lat = -80; lat <= 80; lat += 4) line.push([lat, lon]);
+  GRAT_MAJOR.push(buildLine(line));
+}
+for (let lat = -60; lat <= 60; lat += 30) {
+  const line = [];
+  for (let lon = -180; lon <= 180; lon += 4) line.push([lat, lon]);
+  GRAT_MAJOR.push(buildLine(line));
+}
+
+/* ================= 画布与视图 ================= */
+const canvas = document.getElementById('globe');
+const ctx = canvas.getContext('2d');
+const wrapEl = canvas.parentElement;
+const tipEl = document.getElementById('tip');
+let W = 800, H = 450, DPR = 1;
+let stars = [];
+
+const BASE_SPEED = 3.2;         // 自动自转角速度（度/秒）
+const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const view = { lon: 105, lat: 25, zoom: 1 };
+let speed = REDUCED ? 0 : -BASE_SPEED;
+let dragging = false, flight = null, dragMoved = 0;
+let lastU = null, lastW = null, lastV = null, lastS = 0, lastQx = 1, lastQy = 0;
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = wrapEl.clientWidth; H = wrapEl.clientHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  stars = [];
+  const count = Math.round(W * H / 5200);
+  for (let i = 0; i < count; i++) stars.push({
+    x: Math.random() * W, y: Math.random() * H,
+    r: Math.random() < 0.82 ? Math.random() * 0.7 + 0.3 : Math.random() * 1.1 + 0.9,
+    a: Math.random() * 0.5 + 0.25, ph: Math.random() * TAU, sp: Math.random() * 1.6 + 0.4
+  });
+}
+window.addEventListener('resize', resize);
+resize();
+if (window.innerWidth <= 760) view.zoom = 1.18; /* 手机默认放大视角，光点与文字更易读 */
+
+/* 发光贴图（避免每帧创建渐变） */
+function makeGlow(color, size) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+  gr.addColorStop(0, color); gr.addColorStop(0.4, color.replace(/[\d.]+\)$/, '0.35)'));
+  gr.addColorStop(1, color.replace(/[\d.]+\)$/, '0)'));
+  g.fillStyle = gr; g.fillRect(0, 0, size, size);
+  return c;
+}
+const glowWarm = makeGlow('rgba(255,205,120,0.95)', 32);
+const glowCool = makeGlow('rgba(125,227,255,0.85)', 26);
+const glowSun  = makeGlow('rgba(255,236,170,1)', 64);
+
+/* ================= 投影与绘制 ================= */
+function frameBasis() {
+  const p = rad(view.lat), l = rad(view.lon);
+  const V = [Math.cos(p)*Math.cos(l), Math.cos(p)*Math.sin(l), Math.sin(p)];
+  const U = [-Math.sin(l), Math.cos(l), 0];
+  const Wv = cross3(V, U);
+  return { V, U, W: Wv };
+}
+function slerpLine(path, a, b) {
+  const d = clamp(dot3(a, b), -1, 1);
+  const ang = Math.acos(d);
+  if (ang < 1e-6) return;
+  const sa = Math.sin(ang);
+  const steps = Math.min(120, Math.ceil(deg(ang) / 3));
+  for (let k = 1; k <= steps; k++) {
+    const t = ang * k / steps, w1 = Math.sin(t) / sa, w0 = Math.sin(ang - t) / sa;
+    const p = [a[0]*w0 + b[0]*w1, a[1]*w0 + b[1]*w1, a[2]*w0 + b[2]*w1];
+    path.lineTo(sx(p), sy(p));
+  }
+}
+function drawLandPath(rings, V) {
+  const path = new Path2D();
+  for (const ring of rings) {
+    const n = ring.length / 3;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const j = ((i + 1) % n) * 3;
+      const ax = ring[i*3], ay = ring[i*3+1], az = ring[i*3+2];
+      const bx = ring[j], by = ring[j+1], bz = ring[j+2];
+      const da = ax*V[0]+ay*V[1]+az*V[2], db = bx*V[0]+by*V[1]+bz*V[2];
+      if (da >= 0) out.push([ax, ay, az]);
+      if ((da > 0 && db < 0) || (da < 0 && db > 0)) {
+        const t = da / (da - db);
+        out.push([ax+(bx-ax)*t, ay+(by-ay)*t, az+(bz-az)*t]);
+      }
+    }
+    if (out.length < 3) continue;
+    path.moveTo(sx(out[0]), sy(out[0]));
+    for (let i = 1; i < out.length; i++) {
+      if (Math.acos(clamp(dot3(out[i-1], out[i]), -1, 1)) > rad(3)) slerpLine(path, out[i-1], out[i]);
+      else path.lineTo(sx(out[i]), sy(out[i]));
+    }
+    if (Math.acos(clamp(dot3(out[out.length-1], out[0]), -1, 1)) > rad(3)) slerpLine(path, out[out.length-1], out[0]);
+    path.closePath();
+  }
+  return path;
+}
+function stroke3D(points, close) {
+  ctx.beginPath();
+  let started = false, prev = null;
+  for (const p of points) {
+    if (prev) {
+      const dp = dot3(prev, lastV), dc = dot3(p, lastV);
+      if (dp > 0 && dc > 0) {
+        if (!started) { ctx.moveTo(sx(prev), sy(prev)); started = true; }
+        ctx.lineTo(sx(p), sy(p));
+      } else if (dp > 0 && dc <= 0) {
+        if (!started) { ctx.moveTo(sx(prev), sy(prev)); started = true; }
+        const t = dp / (dp - dc);
+        const ip = [prev[0]+(p[0]-prev[0])*t, prev[1]+(p[1]-prev[1])*t, prev[2]+(p[2]-prev[2])*t];
+        ctx.lineTo(sx(ip), sy(ip));
+        started = false;
+      } else if (dp <= 0 && dc > 0) {
+        const t = dp / (dp - dc);
+        const ip = [prev[0]+(p[0]-prev[0])*t, prev[1]+(p[1]-prev[1])*t, prev[2]+(p[2]-prev[2])*t];
+        ctx.moveTo(sx(ip), sy(ip));
+        ctx.lineTo(sx(p), sy(p));
+        started = true;
+      }
+    }
+    prev = p;
+  }
+  if (close && started) ctx.closePath();
+  ctx.stroke();
+}
+function sx(p) { return cx0 + R0 * dot3(p, lastU); }
+function sy(p) { return cy0 - R0 * dot3(p, lastW); }
+let cx0 = 0, cy0 = 0, R0 = 100;
+
+function render(tSec) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  /* 星空 */
+  for (const s of stars) {
+    const tw = s.r > 0.85 ? 0.55 + 0.45 * Math.sin(tSec * s.sp + s.ph) : 1;
+    ctx.globalAlpha = s.a * tw;
+    ctx.fillStyle = '#cfe0ff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  const basis = frameBasis();
+  lastU = basis.U; lastW = basis.W; lastV = basis.V;
+  cx0 = W / 2; cy0 = H / 2;
+  R0 = (Math.min(W, H) / 2 - 16) * view.zoom;
+  const R = R0, cx = cx0, cy = cy0;
+
+  /* 太阳方向与屏幕投影 */
+  const sun = subsolar(new Date());
+  const sv = sun.vec;
+  const sDot = dot3(sv, lastV);
+  let qx = dot3(sv, lastU), qy = -dot3(sv, lastW);
+  const qn = Math.hypot(qx, qy);
+  if (qn < 1e-6) { qx = 1; qy = 0; } else { qx /= qn; qy /= qn; }
+  const theta = Math.atan2(qy, qx);
+
+  /* 大气外辉 */
+  let g = ctx.createRadialGradient(cx, cy, R * 0.92, cx, cy, R * 1.14);
+  g.addColorStop(0, 'rgba(70,140,255,0)');
+  g.addColorStop(0.55, 'rgba(70,140,255,0.10)');
+  g.addColorStop(1, 'rgba(70,140,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, R * 1.16, 0, TAU); ctx.fill();
+
+  /* 海洋（向太阳一侧提亮） */
+  const ogx = cx + qx * R * 0.35, ogy = cy + qy * R * 0.35;
+  g = ctx.createRadialGradient(ogx, ogy, R * 0.1, cx, cy, R * 1.25);
+  g.addColorStop(0, '#1d4a80');
+  g.addColorStop(0.55, '#122a55');
+  g.addColorStop(1, '#070f26');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+
+  /* 经纬网 */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(140,190,255,0.10)';
+  for (const line of GRAT_MAJOR) stroke3D(line, false);
+
+  /* 陆地 */
+  const landPath = drawLandPath(LAND_RINGS, lastV);
+  ctx.fillStyle = '#31795a';
+  ctx.fill(landPath, 'evenodd');
+  ctx.strokeStyle = 'rgba(190,255,220,0.09)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke(landPath);
+
+  /* 国际换日线 */
+  ctx.setLineDash([7, 7]);
+  ctx.strokeStyle = 'rgba(255,196,105,0.75)';
+  ctx.lineWidth = 1.6;
+  stroke3D(IDL_PTS, false);
+  ctx.setLineDash([]);
+
+  /* 夜半球（晨昏线精确判定）：按太阳-视线夹角决定夜面形状 */
+  const NS = Math.abs(sDot), sgn = sDot >= 0 ? 1 : -1;
+  ctx.fillStyle = 'rgba(3,8,26,0.55)';
+  if (NS < 0.015) {
+    /* 太阳恰在边缘：夜面为半圆 */
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, theta + Math.PI * 0.5, theta + Math.PI * 1.5, false);
+    ctx.closePath(); ctx.fill();
+  } else if (sgn > 0) {
+    /* 太阳在观察者背面：夜面为背日侧窄月牙 */
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, R * NS, R, theta, Math.PI/2, Math.PI * 1.5, false);
+    ctx.arc(cx, cy, R, theta + Math.PI * 1.5, theta + Math.PI * 0.5, true);
+    ctx.closePath(); ctx.fill();
+  } else {
+    /* 太阳在正面：夜面 = 整圆 - 向日残月（evenodd 布尔减） */
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TAU);
+    ctx.moveTo(cx + R * Math.sin(theta), cy - R * Math.cos(theta));
+    ctx.ellipse(cx, cy, R * NS, R, theta, -Math.PI/2, Math.PI/2, false);
+    ctx.arc(cx, cy, R, theta + Math.PI/2, theta + Math.PI * 1.5, true);
+    ctx.closePath();
+    ctx.fill('evenodd');
+  }
+
+  /* 晨昏线（可见弧段） */
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,178,94,0.55)';
+  ctx.lineWidth = 1.6;
+  ctx.shadowColor = 'rgba(255,150,60,0.9)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  if (NS < 0.015) {
+    ctx.moveTo(cx + R * Math.cos(theta + Math.PI/2), cy + R * Math.sin(theta + Math.PI/2));
+    ctx.lineTo(cx - R * Math.cos(theta + Math.PI/2), cy - R * Math.sin(theta + Math.PI/2));
+  } else {
+    ctx.ellipse(cx, cy, R * NS, R, theta, 0, TAU);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  /* 城市 */
+  const dotR = clamp(2.0 * (0.7 + view.zoom * 0.35), 1.6, 4);
+  ctx.font = '10.5px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+  for (const c of CITIES) {
+    const d = dot3(c.vec, lastV);
+    if (d <= 0.01) { c._f = false; continue; }
+    const X = dot3(c.vec, lastU), Y = dot3(c.vec, lastW);
+    const x = cx + R * X, y = cy - R * Y;
+    if (x < -20 || x > W + 20 || y < -20 || y > H + 20) { c._f = false; continue; }
+    const alt = dot3(c.vec, sv);
+    c._sx = x; c._sy = y; c._f = true; c._night = alt < 0;
+    const gs = c._night ? 15 : 10;
+    ctx.globalAlpha = c._night ? 0.95 : 0.65;
+    ctx.drawImage(c._night ? glowWarm : glowCool, x - gs/2, y - gs/2, gs, gs);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c._night ? '#ffe9c4' : '#bfeeff';
+    ctx.beginPath(); ctx.arc(x, y, dotR * (c._night ? 1 : 0.8), 0, TAU); ctx.fill();
+  }
+  /* 城市名标注 */
+  ctx.fillStyle = 'rgba(226,238,255,0.66)';
+  for (const c of CITIES) {
+    if (c._f && LABEL_CITIES.has(c.name)) ctx.fillText(c.name, c._sx + 5, c._sy - 6);
+  }
+
+  /* 太阳直射点标记 */
+  if (sDot > 0.03) {
+    const x = cx + R * dot3(sv, lastU), y = cy - R * dot3(sv, lastW);
+    ctx.drawImage(glowSun, x - 21, y - 21, 42, 42);
+    ctx.fillStyle = '#fff8e0';
+    ctx.beginPath(); ctx.arc(x, y, 3.4, 0, TAU); ctx.fill();
+  }
+
+  /* 大气内侧边缘光 */
+  g = ctx.createRadialGradient(cx, cy, R * 0.86, cx, cy, R);
+  g.addColorStop(0, 'rgba(90,170,255,0)');
+  g.addColorStop(0.85, 'rgba(90,170,255,0.06)');
+  g.addColorStop(1, 'rgba(120,190,255,0.22)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU);
+  ctx.strokeStyle = 'rgba(130,190,255,0.22)';
+  ctx.lineWidth = 1; ctx.stroke();
+
+  window.__sun = sun;
+}
+
+/* ================= 交互 ================= */
+let px = 0, py = 0, pt = 0, vel = 0;
+const pointers = new Map();
+let pinchDist = 0;
+canvas.addEventListener('pointerdown', e => {
+  pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pointers.size >= 2) {
+    const pts = [...pointers.values()];
+    pinchDist = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
+    dragging = false;
+    canvas.classList.remove('dragging');
+    tipEl.style.display = 'none';
+    return;
+  }
+  dragging = true; dragMoved = 0; flight = null; speed = 0; vel = 0;
+  px = e.clientX; py = e.clientY; pt = performance.now();
+  canvas.setPointerCapture(e.pointerId);
+  canvas.classList.add('dragging');
+  tipEl.style.display = 'none';
+});
+canvas.addEventListener('pointermove', e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pointers.size >= 2) {
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
+    if (pinchDist > 0 && d > 0) view.zoom = clamp(view.zoom * d / pinchDist, 0.65, 3);
+    pinchDist = d;
+    return;
+  }
+  if (dragging) {
+    const now = performance.now();
+    const dx = e.clientX - px, dy = e.clientY - py;
+    const dt = Math.max(8, now - pt) / 1000;
+    const dLon = -dx * 0.28 / view.zoom;
+    view.lon = normLon(view.lon + dLon);
+    view.lat = clamp(view.lat + dy * 0.28 / view.zoom, -85, 85);
+    vel = 0.75 * vel + 0.25 * (dLon / dt);
+    dragMoved += Math.abs(dx) + Math.abs(dy);
+    px = e.clientX; py = e.clientY; pt = now;
+  } else {
+    /* 悬停提示 */
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let best = null, bd = 15;
+    for (const c of CITIES) {
+      if (!c._f) continue;
+      const d = Math.hypot(c._sx - mx, c._sy - my);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) {
+      const now = new Date();
+      const li = localInfo(best.tz, now);
+      const rect = canvas.getBoundingClientRect();
+      tipEl.style.display = 'block';
+      tipEl.style.left = Math.min(rect.width - 130, best._sx + 12) + 'px';
+      tipEl.style.top = Math.max(6, best._sy - 40) + 'px';
+      tipEl.innerHTML = '<b>' + best.name + '</b> <span style="color:var(--muted)">' + best.country + '</span><br>' +
+        '<span class="t">' + f2(li.h) + ':' + f2(li.m) + ':' + f2(li.s) + '</span> · ' + (best._night ? '夜' : '昼');
+    } else tipEl.style.display = 'none';
+  }
+});
+function endDrag(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size > 0) { dragging = false; return; } /* 多指触控结束，不触发点击 */
+  if (!dragging) return;
+  dragging = false;
+  canvas.classList.remove('dragging');
+  if (dragMoved < 6 && e) {
+    /* 视为点击：尝试定位最近城市 */
+    const rect = canvas.getBoundingClientRect();
+    let best = null, bd = 15;
+    for (const c of CITIES) {
+      if (!c._f) continue;
+      const d = Math.hypot(c._sx - (e.clientX - rect.left), c._sy - (e.clientY - rect.top));
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) flyTo(best);
+    return;
+  }
+  speed = clamp(vel, -160, 160);
+  if (Math.abs(speed) < BASE_SPEED * 0.6) speed = REDUCED ? 0 : -BASE_SPEED * 0.6;
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', () => endDrag(null));
+canvas.addEventListener('pointerleave', () => { if (!dragging) tipEl.style.display = 'none'; });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  view.zoom = clamp(view.zoom * Math.exp(-e.deltaY * 0.0012), 0.65, 3);
+}, { passive: false });
+
+function flyTo(city) {
+  let targetLon = city.lon;
+  const diff = normLon(targetLon - view.lon);
+  flight = { fl0: view.lon, fa0: view.lat, fl1: view.lon + diff, fa1: city.lat, t0: performance.now(), dur: 750 };
+  speed = 0;
+}
+document.getElementById('zin').addEventListener('click', () => view.zoom = clamp(view.zoom * 1.25, 0.65, 3));
+document.getElementById('zout').addEventListener('click', () => view.zoom = clamp(view.zoom / 1.25, 0.65, 3));
+document.getElementById('zreset').addEventListener('click', () => {
+  view.lon = 105; view.lat = 25; view.zoom = 1; flight = null; speed = REDUCED ? 0 : -BASE_SPEED;
+});
+
+/* ================= DOM：世界时钟 ================= */
+const clockGrid = document.getElementById('clockGrid');
+const clockRefs = {};
+for (const name of CLOCK_CITIES) {
+  const c = CITIES.find(x => x.name === name);
+  const el = document.createElement('div');
+  el.className = 'clock-card';
+  el.innerHTML =
+    '<div class="cc-city">' + c.name + '<span>' + c.en + '</span></div>' +
+    '<div class="cc-time">--:--:--</div>' +
+    '<div class="cc-meta"><span class="cc-date">—</span><span class="badge b-day">昼</span></div>' +
+    '<div class="cc-tz">—</div>';
+  clockGrid.appendChild(el);
+  clockRefs[name] = {
+    time: el.querySelector('.cc-time'), date: el.querySelector('.cc-date'),
+    badge: el.querySelector('.badge'), tz: el.querySelector('.cc-tz'), city: c
+  };
+}
+
+/* ================= DOM：市场 ================= */
+const mktList = document.getElementById('mktList');
+const mktRefs = [];
+MARKETS.forEach(mk => {
+  const row = document.createElement('div');
+  row.className = 'mkt-row';
+  row.innerHTML =
+    '<div class="mkt-name"><b>' + mk.name + '</b><span>' + mk.city + '</span></div>' +
+    '<div class="mkt-local"><span class="mt">--:--:--</span><span class="md">—</span></div>' +
+    '<div class="mkt-status"><span class="badge b-closed">—</span></div>' +
+    '<div class="bar"><i></i></div>' +
+    '<div class="mkt-next">—</div>';
+  mktList.appendChild(row);
+  mktRefs.push({
+    mk, time: row.querySelector('.mt'), date: row.querySelector('.md'),
+    badge: row.querySelector('.badge'), bar: row.querySelector('.bar i'),
+    barBox: row.querySelector('.bar'), next: row.querySelector('.mkt-next')
+  });
+});
+
+/* ================= 每秒刷新文本 ================= */
+const utcFmt = new Intl.DateTimeFormat('zh-CN', { timeZone: 'UTC', month: 'long', day: 'numeric', weekday: 'short' });
+const utcTimeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+const liveLineEl = document.getElementById('liveLine');
+const sunPosEl = document.getElementById('sunPos');
+const hudUtcEl = document.getElementById('hudUtc');
+const viewInfoEl = document.getElementById('viewInfo');
+
+function fmtLat(v) { return Math.abs(v).toFixed(1) + '°' + (v >= 0 ? 'N' : 'S'); }
+function fmtLon(v) { return Math.abs(v).toFixed(1) + '°' + (v >= 0 ? 'E' : 'W'); }
+
+function tickText() {
+  const now = new Date();
+  document.getElementById('utcClock').textContent = utcTimeFmt.format(now);
+  document.getElementById('utcDate').textContent = '协调世界时 UTC · ' + utcFmt.format(now);
+  hudUtcEl.textContent = utcTimeFmt.format(now) + ' UTC';
+
+  if (window.__sun) {
+    sunPosEl.innerHTML = '<em>' + fmtLat(window.__sun.lat) + '</em> · <em>' + fmtLon(window.__sun.lon) + '</em>';
+  }
+  viewInfoEl.textContent = fmtLon(normLon(view.lon)) + ' / ' + fmtLat(view.lat) + ' · ×' + view.zoom.toFixed(2);
+
+  /* 首屏故事行 */
+  const parts = [];
+  for (const n of ['东京', '伦敦', '纽约']) {
+    const c = CITIES.find(x => x.name === n);
+    const li = localInfo(c.tz, now);
+    parts.push(n + ' ' + f2(li.h) + ':' + f2(li.m) + ' <i>' + daypart(li.h) + '</i>');
+  }
+  liveLineEl.innerHTML = parts.join('<span style="color:var(--muted)">·</span>');
+
+  /* 世界时钟 */
+  for (const name of CLOCK_CITIES) {
+    const r = clockRefs[name];
+    const li = localInfo(r.city.tz, now);
+    r.time.textContent = f2(li.h) + ':' + f2(li.m) + ':' + f2(li.s);
+    r.date.textContent = localDateStr(r.city.tz, now);
+    const isNight = window.__sun ? dot3(r.city.vec, window.__sun.vec) < 0 : false;
+    r.badge.textContent = isNight ? '夜' : '昼';
+    r.badge.className = 'badge ' + (isNight ? 'b-night' : 'b-day');
+    r.tz.textContent = (li.tzName || r.city.tz) + ' · ' + WD_ZH[li.wd];
+  }
+
+  /* 市场 */
+  for (const r of mktRefs) {
+    const li = localInfo(r.mk.tz, now);
+    r.time.textContent = f2(li.h) + ':' + f2(li.m) + ':' + f2(li.s);
+    r.date.textContent = WD_ZH[li.wd];
+    const st = marketState(r.mk, li);
+    const [txt, cls] = MK_BADGE[st.st];
+    r.badge.textContent = txt;
+    r.badge.className = 'badge ' + cls;
+    r.barBox.className = 'bar' + (st.st === 'open' ? '' : ' gray');
+    r.bar.style.width = Math.round(st.pct * 100) + '%';
+    if (st.st === 'closed') r.next.textContent = st.diff == null ? '—' : '距开市 ' + fmtDur(st.diff);
+    else if (st.st === 'pre') r.next.textContent = '距开市 ' + fmtDur(st.diff);
+    else if (st.st === 'lunch') r.next.textContent = '距开市 ' + fmtDur(st.diff);
+    else r.next.textContent = '距收市 ' + fmtDur(st.diff);
+  }
+}
+
+/* ================= 主循环 ================= */
+let lastT = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  if (flight) {
+    const t = clamp((now - flight.t0) / flight.dur, 0, 1);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    view.lon = normLon(flight.fl0 + (flight.fl1 - flight.fl0) * e);
+    view.lat = flight.fa0 + (flight.fa1 - flight.fa0) * e;
+    if (t >= 1) { flight = null; speed = REDUCED ? 0 : -BASE_SPEED * 0.4; }
+  } else if (!dragging) {
+    speed += ((REDUCED ? 0 : -BASE_SPEED) - speed) * Math.min(1, dt * 0.35);
+    view.lon = normLon(view.lon + speed * dt);
+  }
+  render(now / 1000);
+  requestAnimationFrame(loop);
+}
+tickText();
+setInterval(tickText, 1000);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
